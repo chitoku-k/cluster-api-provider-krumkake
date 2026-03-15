@@ -22,7 +22,7 @@ type KrumkakeClusterTemplateResource struct {
 // KrumkakeClusterTemplate is the Schema for the krumkakeclustertemplates API
 type KrumkakeClusterTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec KrumkakeClusterTemplateSpec `json:"spec"`
 }
@@ -32,7 +32,7 @@ type KrumkakeClusterTemplate struct {
 // KrumkakeClusterTemplateList contains a list of KrumkakeClusterTemplate
 type KrumkakeClusterTemplateList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitzero"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []KrumkakeClusterTemplate `json:"items"`
 }
 

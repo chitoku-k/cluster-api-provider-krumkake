@@ -79,7 +79,7 @@ func (r *KrumkakeClusterReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 }
 
 func (r *KrumkakeClusterReconciler) reconcileNormal(ctx context.ClusterContext) (ctrl.Result, error) {
-	ctx.KrumkakeCluster.Status.Ready = true
+	ctx.KrumkakeCluster.Status.Initialization.Provisioned = new(true)
 	return ctrl.Result{}, nil
 }
 
