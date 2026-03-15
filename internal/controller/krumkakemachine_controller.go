@@ -21,8 +21,8 @@ type KrumkakeMachineReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io.infrastructure.cluster.x-k8s.io,resources=krumkakemachines,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io.infrastructure.cluster.x-k8s.io,resources=krumkakemachines/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=krumkakemachines,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=krumkakemachines/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;machines,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
@@ -96,7 +96,7 @@ func (r *KrumkakeMachineReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 }
 
 func (r *KrumkakeMachineReconciler) reconcileNormal(ctx context.MachineContext) (ctrl.Result, error) {
-	ctx.KrumkakeMachine.Status.Ready = true
+	ctx.KrumkakeMachine.Status.Initialization.Provisioned = new(true)
 	return ctrl.Result{}, nil
 }
 

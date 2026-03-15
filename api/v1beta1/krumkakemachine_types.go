@@ -14,7 +14,7 @@ const (
 type KrumkakeMachineSpec struct {
 	// ProviderID is the unique identifier as specified by the cloud provider.
 	// +optional
-	ProviderID *string `json:"providerID,omitempty"`
+	ProviderID string `json:"providerID,omitempty"`
 
 	// Vultr is the spec of the Vultr machine.
 	// +optional
@@ -51,9 +51,13 @@ type KrumkakeMachineVultrSpec struct {
 
 // KrumkakeMachineStatus defines the observed state of KrumkakeMachine.
 type KrumkakeMachineStatus struct {
-	// Ready represents that the infrastructure is ready.
-	// +kubebuilder:default:=false
-	Ready bool `json:"ready"`
+	// Initialization represents the observations of the KrumkakeMachine initialization process.
+	// +optional
+	Initialization KrumkakeMachineInitializationStatus `json:"initialization,omitempty,omitzero"`
+
+	// Addresses contains the associated addresses for the machine.
+	// +optional
+	Addresses []clusterv1beta2.MachineAddress `json:"addresses"`
 
 	// CPU represents the number of virtual CPUs of the machine.
 	// +optional
@@ -67,15 +71,20 @@ type KrumkakeMachineStatus struct {
 	// +optional
 	Storage int `json:"storage,omitempty"`
 
-	// Addresses contains the associated addresses for the machine.
-	Addresses []clusterv1beta2.MachineAddress `json:"addresses"`
-
 	// Vultr represents the Vultr machine's status.
+	// +optional
 	Vultr *KrumkakeMachineVultrStatus `json:"vultr,omitempty"`
 
 	// Conditions defines current service state of the KrumkakeMachine.
 	// +optional
 	Conditions clusterv1beta2.Conditions `json:"conditions,omitempty"`
+}
+
+// KrumkakeMachineInitializationStatus defines the initialization status of KrumkakeMachine.
+type KrumkakeMachineInitializationStatus struct {
+	// Provisioned represents whether the infrastructure is fully provisioned.
+	// +optional
+	Provisioned *bool `json:"provisioned,omitempty"`
 }
 
 // KrumkakeMachineVultrStatus defines the observed Vultr's state of KrumkakeMachine.
@@ -95,19 +104,19 @@ type KrumkakeMachineVultrStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:printcolumn:name="Cluster",type="string",JSONPath=".metadata.labels.cluster\\.x-k8s\\.io/cluster-name",description="Cluster to which this KrumkakeMachine belongs"
-// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.ready",description="Machine ready status"
-// +kubebuilder:printcolumn:name="InstanceID",type="string",JSONPath=".spec.providerID",description="Instance ID"
+// +kubebuilder:printcolumn:name="Provider ID",type="string",JSONPath=".spec.providerID",description="Provider ID"
 // +kubebuilder:printcolumn:name="Machine",type="string",JSONPath=".metadata.ownerReferences[?(@.kind==\"Machine\")].name",description="Machine object which owns this KrumkakeMachine"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:resource:path=krumkakemachines,scope=Namespaced,categories=cluster-api
 // +kubebuilder:subresource:status
 
 // KrumkakeMachine is the Schema for the krumkakemachines API.
 type KrumkakeMachine struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   KrumkakeMachineSpec   `json:"spec"`
-	Status KrumkakeMachineStatus `json:"status,omitzero"`
+	Status KrumkakeMachineStatus `json:"status,omitempty"`
 }
 
 func (k *KrumkakeMachine) GetConditions() clusterv1beta2.Conditions {
@@ -123,7 +132,7 @@ func (k *KrumkakeMachine) SetConditions(conditions clusterv1beta2.Conditions) {
 // KrumkakeMachineList contains a list of KrumkakeMachine.
 type KrumkakeMachineList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitzero"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []KrumkakeMachine `json:"items"`
 }
 

@@ -14,34 +14,40 @@ const (
 type KrumkakeClusterSpec struct {
 	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
 	// +optional
-	ControlPlaneEndpoint clusterv1beta2.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
+	ControlPlaneEndpoint clusterv1beta2.APIEndpoint `json:"controlPlaneEndpoint,omitempty,omitzero"`
 }
 
 // KrumkakeClusterStatus defines the observed state of KrumkakeCluster.
 type KrumkakeClusterStatus struct {
-	// Ready represents that the infrastructure is ready.
-	// +kubebuilder:default:=false
-	Ready bool `json:"ready"`
+	// Initialization represents the observations of the KrumkakeCluster initialization process.
+	// +optional
+	Initialization KrumkakeClusterInitializationStatus `json:"initialization,omitempty,omitzero"`
 
 	// Conditions defines current service state of the KrumkakeCluster.
 	// +optional
 	Conditions clusterv1beta2.Conditions `json:"conditions,omitempty"`
 }
 
+// KrumkakeClusterInitializationStatus defines the initialization status of KrumkakeCluster.
+type KrumkakeClusterInitializationStatus struct {
+	// Provisioned represents whether the infrastructure is fully provisioned.
+	// +optional
+	Provisioned *bool `json:"provisioned,omitempty"`
+}
+
 // +kubebuilder:object:root=true
 // +kubebuilder:printcolumn:name="Cluster",type="string",JSONPath=".metadata.labels.cluster\\.x-k8s\\.io/cluster-name",description="Cluster to which this KrumkakeCluster belongs"
-// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.ready",description="Cluster infrastructure is ready for Krumkake instances"
-// +kubebuilder:printcolumn:name="Endpoint",type="string",JSONPath=".spec.controlPlaneEndpoint",description="API Endpoint",priority=1
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:resource:path=krumkakeclusters,scope=Namespaced,categories=cluster-api
 // +kubebuilder:subresource:status
 
 // KrumkakeCluster is the Schema for the krumkakeclusters API
 type KrumkakeCluster struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   KrumkakeClusterSpec   `json:"spec"`
-	Status KrumkakeClusterStatus `json:"status,omitzero"`
+	Spec   KrumkakeClusterSpec   `json:"spec,omitempty"`
+	Status KrumkakeClusterStatus `json:"status,omitempty"`
 }
 
 func (k *KrumkakeCluster) GetConditions() clusterv1beta2.Conditions {
@@ -57,7 +63,7 @@ func (k *KrumkakeCluster) SetConditions(conditions clusterv1beta2.Conditions) {
 // KrumkakeClusterList contains a list of KrumkakeCluster.
 type KrumkakeClusterList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitzero"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []KrumkakeCluster `json:"items"`
 }
 
