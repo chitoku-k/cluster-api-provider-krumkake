@@ -29,7 +29,7 @@ type KrumkakeImageSpec struct {
 type KrumkakeImageStatus struct {
 	// Vultr represents the Vultr snapshot's status.
 	// +optional
-	Vultr *KrumkakeImageVultrStatus `json:"vultr,omitempty"`
+	Vultr KrumkakeImageVultrStatus `json:"vultr,omitempty,omitzero"`
 
 	// Conditions defines current service state of the KrumkakeImage.
 	// +optional
@@ -48,16 +48,10 @@ type KrumkakeImageVultrStatus struct {
 }
 
 func (k *KrumkakeImageVultrStatus) GetSnapshotID() string {
-	if k == nil {
-		return ""
-	}
 	return k.SnapshotID
 }
 
 func (k *KrumkakeImageVultrStatus) GetSnapshotState() SnapshotState {
-	if k == nil {
-		return SnapshotStateNone
-	}
 	return ptr.Deref(k.SnapshotState, SnapshotStateNone)
 }
 
