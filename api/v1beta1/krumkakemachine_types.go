@@ -22,7 +22,7 @@ type KrumkakeMachineSpec struct {
 
 	// Vultr is the spec of the Vultr machine.
 	// +optional
-	Vultr KrumkakeMachineVultrSpec `json:"vultr"`
+	Vultr KrumkakeMachineVultrSpec `json:"vultr,omitempty,omitzero"`
 }
 
 // KrumkakeMachineVultrSpec defines the desired Vultr's state of KrumkakeMachineVultrSpec.
@@ -74,7 +74,7 @@ type KrumkakeMachineStatus struct {
 
 	// Vultr represents the Vultr machine's status.
 	// +optional
-	Vultr *KrumkakeMachineVultrStatus `json:"vultr,omitempty"`
+	Vultr KrumkakeMachineVultrStatus `json:"vultr,omitempty,omitzero"`
 
 	// Conditions defines current service state of the KrumkakeMachine.
 	// +optional
