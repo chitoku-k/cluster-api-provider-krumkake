@@ -1,12 +1,12 @@
 package controller
 
 import (
+	"slices"
 	"time"
 
 	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
 	"github.com/chitoku-k/cluster-api-provider-krumkake/context"
 	"github.com/vultr/govultr/v3"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -65,14 +65,14 @@ func (r *KrumkakeImageReconciler) reconcileNormal(ctx context.ImageContext) (ctr
 	switch ctx.KrumkakeImage.Status.Vultr.GetSnapshotState() {
 	case infrastructurev1beta1.SnapshotStateNone:
 		krumkakeMachineList := &infrastructurev1beta1.KrumkakeMachineList{}
-		selector := fields.AndSelectors(
-			fields.OneTermEqualSelector("spec.imageName", ctx.KrumkakeImage.Name),
-			fields.OneTermNotEqualSelector("spec.vultr.region", ""),
-		)
-		if err := r.List(ctx, krumkakeMachineList, client.MatchingFieldsSelector{Selector: selector}); err != nil {
+		if err := r.List(ctx, krumkakeMachineList, client.MatchingFields{"spec.imageName": ctx.KrumkakeImage.Name}); err != nil {
 			return ctrl.Result{}, err
 		}
-		if len(krumkakeMachineList.Items) == 0 {
+
+		found := slices.ContainsFunc(krumkakeMachineList.Items, func(krumkakeMachine infrastructurev1beta1.KrumkakeMachine) bool {
+			return krumkakeMachine.Spec.Vultr.Region != ""
+		})
+		if !found {
 			return ctrl.Result{}, nil
 		}
 
