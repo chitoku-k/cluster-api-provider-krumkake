@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"os"
 
+	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
+	"github.com/chitoku-k/cluster-api-provider-krumkake/internal/controller"
+	"github.com/vultr/govultr/v3"
+	"golang.org/x/oauth2"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -17,9 +21,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
-
-	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
-	"github.com/chitoku-k/cluster-api-provider-krumkake/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -108,6 +109,10 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 
+	vultrAccessToken := os.Getenv("VULTR_API_KEY")
+	vultrTokenSource := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: vultrAccessToken})
+	vultrClient := govultr.NewClient(oauth2.NewClient(ctx, vultrTokenSource))
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
@@ -126,6 +131,14 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "KrumkakeCluster")
+		os.Exit(1)
+	}
+	if err := (&controller.KrumkakeImageReconciler{
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		SnapshotService: vultrClient.Snapshot,
+	}).SetupWithManager(ctx, mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "KrumkakeImage")
 		os.Exit(1)
 	}
 	if err := (&controller.KrumkakeMachineReconciler{

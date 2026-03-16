@@ -16,6 +16,10 @@ type KrumkakeMachineSpec struct {
 	// +optional
 	ProviderID string `json:"providerID,omitempty"`
 
+	// ImageName is the name of the KrumkakeImage.
+	// +kubebuilder:validation:Required
+	ImageName string `json:"imageName"`
+
 	// Vultr is the spec of the Vultr machine.
 	// +optional
 	Vultr KrumkakeMachineVultrSpec `json:"vultr"`
@@ -29,9 +33,6 @@ type KrumkakeMachineVultrSpec struct {
 
 	// PlanID is the ID of the Vultr VPS plan.
 	PlanID string `json:"planID,omitempty"`
-
-	// The snapshot_id to use when deploying this instance.
-	SnapshotID string `json:"snapshotID,omitempty"`
 
 	// VPCID is the ID of the VPC to be attached.
 	// +optional
@@ -93,11 +94,11 @@ type KrumkakeMachineVultrStatus struct {
 	// +optional
 	SubscriptionStatus *SubscriptionStatus `json:"subscriptionStatus,omitempty"`
 
-	// PowerStatus represents that the VPS is powerd on or not
+	// PowerStatus represents the power status of server.
 	// +optional
 	PowerStatus *PowerStatus `json:"powerStatus,omitempty"`
 
-	// ServerState represents a detail of server state.
+	// ServerState represents the state of server.
 	// +optional
 	ServerState *ServerState `json:"serverState,omitempty"`
 }
