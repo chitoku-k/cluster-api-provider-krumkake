@@ -10,7 +10,7 @@ const (
 	SubscriptionStatusClosed    = SubscriptionStatus("Closed")
 )
 
-// PowerStatus represents that the VPS is powerd on or not
+// PowerStatus represents the power status of server.
 type PowerStatus string
 
 const (
@@ -19,7 +19,7 @@ const (
 	PowerStatusRunning  = PowerStatus("Running")
 )
 
-// ServerState represents a detail of server state.
+// ServerState represents the state of server.
 type ServerState string
 
 const (
@@ -29,4 +29,15 @@ const (
 	ServerStateIsoMounting = ServerState("IsoMounting")
 	ServerStateOK          = ServerState("OK")
 	ServerStateError       = ServerState("Error")
+)
+
+// SnapshotState represents the state of snapshot.
+type SnapshotState string
+
+const (
+	SnapshotStateNone     = SnapshotState("None")
+	SnapshotStatePending  = SnapshotState("Pending")
+	SnapshotStateComplete = SnapshotState("Complete")
+	SnapshotStateDeleted  = SnapshotState("Deleted")
+	SnapshotStateError    = SnapshotState("Error")
 )
