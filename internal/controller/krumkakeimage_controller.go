@@ -81,6 +81,7 @@ func (r *KrumkakeImageReconciler) reconcileNormal(ctx context.ImageContext) (ctr
 			ctx.KrumkakeImage.Status.Vultr.SnapshotState = new(infrastructurev1beta1.SnapshotStateError)
 			return ctrl.Result{}, err
 		}
+		ctx.KrumkakeImage.Status.Vultr.SnapshotID = snapshot.ID
 
 		switch snapshot.Status {
 		case "pending":
