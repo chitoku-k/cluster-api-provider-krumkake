@@ -147,7 +147,7 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 			return ctrl.Result{}, err
 		}
 
-		if krumkakeImage.Status.Vultr.SnapshotID == "" {
+		if ptr.Deref(krumkakeImage.Status.Vultr.SnapshotState, infrastructurev1beta1.SnapshotStateNone) != infrastructurev1beta1.SnapshotStateComplete {
 			return ctrl.Result{}, nil
 		}
 
