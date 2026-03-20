@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"net/http"
 	"slices"
 	"time"
 
@@ -89,14 +90,19 @@ func (r *KrumkakeImageReconciler) reconcileNormal(ctx context.ImageContext) (ctr
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 
 		default:
-			ctx.Logger.Info("unknown snapshot status", "id", snapshot.ID, "status", snapshot.Status)
+			ctx.Logger.Info("unexpected snapshot status", "id", snapshot.ID, "status", snapshot.Status)
 			ctx.KrumkakeImage.Status.Vultr.SnapshotState = new(infrastructurev1beta1.SnapshotStateError)
 			return ctrl.Result{}, nil
 		}
 
 	case infrastructurev1beta1.SnapshotStatePending:
-		snapshot, _, err := r.SnapshotService.Get(ctx, ctx.KrumkakeImage.Status.Vultr.GetSnapshotID())
+		snapshot, res, err := r.SnapshotService.Get(ctx, ctx.KrumkakeImage.Status.Vultr.GetSnapshotID())
 		if err != nil {
+			if res != nil && res.StatusCode == http.StatusNotFound {
+				ctx.KrumkakeImage.Status.Vultr.SnapshotID = ""
+				ctx.KrumkakeImage.Status.Vultr.SnapshotState = new(infrastructurev1beta1.SnapshotStateError)
+				return ctrl.Result{}, nil
+			}
 			return ctrl.Result{}, err
 		}
 
@@ -108,7 +114,7 @@ func (r *KrumkakeImageReconciler) reconcileNormal(ctx context.ImageContext) (ctr
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 
 		default:
-			ctx.Logger.Info("unknown snapshot status", "id", snapshot.ID, "status", snapshot.Status)
+			ctx.Logger.Info("unexpected snapshot status", "id", snapshot.ID, "status", snapshot.Status)
 			ctx.KrumkakeImage.Status.Vultr.SnapshotState = new(infrastructurev1beta1.SnapshotStateError)
 			return ctrl.Result{}, nil
 		}
@@ -119,8 +125,6 @@ func (r *KrumkakeImageReconciler) reconcileNormal(ctx context.ImageContext) (ctr
 
 func (r *KrumkakeImageReconciler) reconcileDelete(ctx context.ImageContext) (ctrl.Result, error) {
 	if snapshotID := ctx.KrumkakeImage.Status.Vultr.GetSnapshotID(); snapshotID != "" {
-		ctx.KrumkakeImage.Status.Vultr.SnapshotState = new(infrastructurev1beta1.SnapshotStateDeleted)
-
 		if err := r.SnapshotService.Delete(ctx, snapshotID); err != nil {
 			return ctrl.Result{}, err
 		}
