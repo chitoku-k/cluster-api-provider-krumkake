@@ -194,31 +194,34 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 
 	ctx.KrumkakeMachine.Spec.ProviderID = fmt.Sprintf("vultr://%s", instance.ID)
 
-	externalIPv6Address := instance.V6Network
-	externalIPv4Address := instance.MainIP
-
-	// TODO: Use instance.InternalIP when all migrations are complete.
-	externalIPv6AddressSHA256 := sha256.Sum256([]byte(externalIPv6Address + "1/128"))
-	v, err := strconv.ParseUint(hex.EncodeToString(externalIPv6AddressSHA256[:])[:4], 16, 64)
-	if err != nil {
-		ctx.Logger.Error(err, "failed to parse sha256 of external IPv6 address")
-	}
-	v = (v >> 7) + 1
-	internalIPv4Address := fmt.Sprintf("192.168.%d.%d", 34+(v/256), v%256)
-
 	ctx.KrumkakeMachine.Status.Addresses = []clusterv1beta2.MachineAddress{
 		{
-			Type:    clusterv1beta2.MachineInternalIP,
-			Address: internalIPv4Address,
-		},
-		{
 			Type:    clusterv1beta2.MachineExternalIP,
-			Address: externalIPv4Address,
+			Address: instance.MainIP,
 		},
-		{
-			Type:    clusterv1beta2.MachineExternalIP,
-			Address: externalIPv6Address,
-		},
+	}
+
+	// TODO: Use instance.InternalIP when all migrations are complete.
+	if instance.V6Network != "" {
+		externalIPv6Address := instance.V6Network + "1"
+		externalIPv6AddressSHA256 := sha256.Sum256([]byte(externalIPv6Address + "/128"))
+		v, err := strconv.ParseUint(hex.EncodeToString(externalIPv6AddressSHA256[:])[:4], 16, 64)
+		if err != nil {
+			ctx.Logger.Error(err, "failed to parse sha256 of external IPv6 address")
+		}
+		v = (v >> 7) + 1
+		internalIPv4Address := fmt.Sprintf("192.168.%d.%d", 34+(v/256), v%256)
+
+		ctx.KrumkakeMachine.Status.Addresses = append(ctx.KrumkakeMachine.Status.Addresses,
+			clusterv1beta2.MachineAddress{
+				Type:    clusterv1beta2.MachineExternalIP,
+				Address: externalIPv6Address,
+			},
+			clusterv1beta2.MachineAddress{
+				Type:    clusterv1beta2.MachineInternalIP,
+				Address: internalIPv4Address,
+			},
+		)
 	}
 
 	ctx.KrumkakeMachine.Status.CPU = instance.VCPUCount
