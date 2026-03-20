@@ -247,11 +247,13 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 		return ctrl.Result{}, nil
 	case "suspended":
 		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusSuspended)
+		return ctrl.Result{}, nil
 	case "closed":
 		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusClosed)
+		return ctrl.Result{}, nil
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 }
 
 func (r *KrumkakeMachineReconciler) reconcileDelete(ctx context.MachineContext) (ctrl.Result, error) {
