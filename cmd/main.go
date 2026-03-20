@@ -155,8 +155,9 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.KrumkakeMachineReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		InstanceService: vultrClient.Instance,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "KrumkakeMachine")
 		os.Exit(1)

@@ -1,9 +1,22 @@
 package controller
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
 	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
 	"github.com/chitoku-k/cluster-api-provider-krumkake/context"
+	"github.com/vultr/govultr/v3"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	clusterutil "sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
@@ -18,7 +31,8 @@ import (
 
 type KrumkakeMachineReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme          *runtime.Scheme
+	InstanceService govultr.InstanceService
 }
 
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=krumkakemachines,verbs=get;list;watch;create;update;patch;delete
@@ -96,11 +110,164 @@ func (r *KrumkakeMachineReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 }
 
 func (r *KrumkakeMachineReconciler) reconcileNormal(ctx context.MachineContext) (ctrl.Result, error) {
+	if !ptr.Deref(ctx.Cluster.Status.Initialization.InfrastructureProvisioned, false) {
+		return ctrl.Result{}, nil
+	}
+	if ctx.Machine.Spec.Bootstrap.DataSecretName == nil {
+		return ctrl.Result{}, nil
+	}
+
+	if ctx.KrumkakeMachine.Spec.Vultr.Region != "" {
+		return r.reconcileNormalVultr(ctx)
+	}
+
 	ctx.KrumkakeMachine.Status.Initialization.Provisioned = new(true)
 	return ctrl.Result{}, nil
 }
 
+func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineContext) (ctrl.Result, error) {
+	var instance *govultr.Instance
+	var res *http.Response
+	var err error
+	if ctx.KrumkakeMachine.Spec.ProviderID == "" {
+		dataSecretName := types.NamespacedName{Namespace: ctx.KrumkakeMachine.Namespace, Name: *ctx.Machine.Spec.Bootstrap.DataSecretName}
+		dataSecret := &corev1.Secret{}
+		if err := r.Get(ctx, dataSecretName, dataSecret); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		dataSecretValue, ok := dataSecret.Data["value"]
+		if !ok {
+			return ctrl.Result{}, fmt.Errorf("no value found in the secret")
+		}
+
+		krumkakeImageName := types.NamespacedName{Namespace: ctx.KrumkakeMachine.Namespace, Name: ctx.KrumkakeMachine.Spec.ImageName}
+		krumkakeImage := &infrastructurev1beta1.KrumkakeImage{}
+		if err := r.Get(ctx, krumkakeImageName, krumkakeImage); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		if krumkakeImage.Status.Vultr.SnapshotID == "" {
+			return ctrl.Result{}, nil
+		}
+
+		var attachVPC []string
+		if vpcID := ctx.KrumkakeMachine.Spec.Vultr.VPCID; vpcID != "" {
+			attachVPC = append(attachVPC, vpcID)
+		}
+
+		instance, res, err = r.InstanceService.Create(ctx, &govultr.InstanceCreateReq{
+			Region: ctx.KrumkakeMachine.Spec.Vultr.Region,
+			Plan:   ctx.KrumkakeMachine.Spec.Vultr.PlanID,
+			Label:  ctx.KrumkakeMachine.Name,
+			Tags: []string{
+				fmt.Sprintf("clusterUID:%s", ctx.KrumkakeCluster.UID),
+				fmt.Sprintf("clusterName:%s", ctx.KrumkakeCluster.Name),
+				fmt.Sprintf("machineUID:%s", ctx.KrumkakeMachine.UID),
+				fmt.Sprintf("machineName:%s", ctx.KrumkakeMachine.Name),
+				fmt.Sprintf("namespace:%s", ctx.KrumkakeMachine.Namespace),
+			},
+			FirewallGroupID: ctx.KrumkakeMachine.Spec.Vultr.FirewallGroupID,
+			SnapshotID:      krumkakeImage.Status.Vultr.SnapshotID,
+			Hostname:        ctx.KrumkakeMachine.Name,
+			EnableIPv6:      new(true),
+			AttachVPC:       attachVPC,
+			VPCOnly:         &ctx.KrumkakeMachine.Spec.Vultr.VPCOnly,
+			SSHKeys:         ctx.KrumkakeMachine.Spec.Vultr.SSHKeys,
+			UserData:        base64.StdEncoding.EncodeToString(dataSecretValue),
+		})
+	} else if instanceID, ok := strings.CutPrefix(ctx.KrumkakeMachine.Spec.ProviderID, "vultr://"); ok {
+		instance, res, err = r.InstanceService.Get(ctx, instanceID)
+	} else {
+		return ctrl.Result{}, err
+	}
+
+	if err != nil {
+		if res != nil && res.StatusCode == http.StatusNotFound {
+			ctx.KrumkakeMachine.Spec.ProviderID = ""
+			ctx.KrumkakeMachine.Status.Vultr = infrastructurev1beta1.KrumkakeMachineVultrStatus{}
+			return ctrl.Result{}, nil
+		}
+		ctx.KrumkakeMachine.Status.Vultr.ServerState = new(infrastructurev1beta1.ServerStateError)
+		return ctrl.Result{}, err
+	}
+
+	ctx.KrumkakeMachine.Spec.ProviderID = fmt.Sprintf("vultr://%s", instance.ID)
+
+	externalIPv6Address := instance.V6Network
+	externalIPv4Address := instance.MainIP
+
+	// TODO: Use instance.InternalIP when all migrations are complete.
+	externalIPv6AddressSHA256 := sha256.Sum256([]byte(externalIPv6Address + "1/128"))
+	v, err := strconv.ParseUint(hex.EncodeToString(externalIPv6AddressSHA256[:])[:4], 16, 64)
+	if err != nil {
+		ctx.Logger.Error(err, "failed to parse sha256 of external IPv6 address")
+	}
+	v = (v >> 7) + 1
+	internalIPv4Address := fmt.Sprintf("192.168.%d.%d", 34+(v/256), v%256)
+
+	ctx.KrumkakeMachine.Status.Addresses = []clusterv1beta2.MachineAddress{
+		{
+			Type:    clusterv1beta2.MachineInternalIP,
+			Address: internalIPv4Address,
+		},
+		{
+			Type:    clusterv1beta2.MachineExternalIP,
+			Address: externalIPv4Address,
+		},
+		{
+			Type:    clusterv1beta2.MachineExternalIP,
+			Address: externalIPv6Address,
+		},
+	}
+
+	ctx.KrumkakeMachine.Status.CPU = instance.VCPUCount
+	ctx.KrumkakeMachine.Status.RAM = instance.RAM
+	ctx.KrumkakeMachine.Status.Storage = instance.Disk
+
+	switch instance.PowerStatus {
+	case "starting":
+		ctx.KrumkakeMachine.Status.Vultr.PowerStatus = new(infrastructurev1beta1.PowerStatusStarting)
+	case "stopped":
+		ctx.KrumkakeMachine.Status.Vultr.PowerStatus = new(infrastructurev1beta1.PowerStatusStopped)
+	case "running":
+		ctx.KrumkakeMachine.Status.Vultr.PowerStatus = new(infrastructurev1beta1.PowerStatusRunning)
+	}
+
+	switch instance.Status {
+	case "pending":
+		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusPending)
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	case "active":
+		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusActive)
+		ctx.KrumkakeMachine.Status.Initialization.Provisioned = new(true)
+		return ctrl.Result{}, nil
+	case "suspended":
+		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusSuspended)
+	case "closed":
+		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusClosed)
+	}
+
+	return ctrl.Result{}, nil
+}
+
 func (r *KrumkakeMachineReconciler) reconcileDelete(ctx context.MachineContext) (ctrl.Result, error) {
+	if instanceID, ok := strings.CutPrefix(ctx.KrumkakeMachine.Spec.ProviderID, "vultr://"); ok {
+		instance, res, err := r.InstanceService.Get(ctx, instanceID)
+		if err != nil {
+			if res != nil && res.StatusCode == http.StatusNotFound {
+				ctx.KrumkakeMachine.Spec.ProviderID = ""
+				ctx.KrumkakeMachine.Status.Vultr = infrastructurev1beta1.KrumkakeMachineVultrStatus{}
+				return ctrl.Result{}, nil
+			}
+			return ctrl.Result{}, err
+		}
+
+		if err := r.InstanceService.Delete(ctx, instance.ID); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	controllerutil.RemoveFinalizer(ctx.KrumkakeMachine, infrastructurev1beta1.MachineFinalizer)
 	return ctrl.Result{}, nil
 }
