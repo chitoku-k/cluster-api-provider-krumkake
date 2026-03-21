@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/clientcmd"
+	cloudproviderapi "k8s.io/cloud-provider/api"
 	"k8s.io/utils/ptr"
 	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	clusterutil "sigs.k8s.io/cluster-api/util"
@@ -244,22 +247,22 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 	}
 
 	switch instance.Status {
-	case "pending":
-		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusPending)
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	case "active":
 		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusActive)
 		ctx.KrumkakeMachine.Status.Initialization.Provisioned = new(true)
-		return ctrl.Result{}, nil
+		return r.reconcileNode(ctx)
 	case "suspended":
 		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusSuspended)
 		return ctrl.Result{}, nil
 	case "closed":
 		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusClosed)
 		return ctrl.Result{}, nil
+	case "pending":
+		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusPending)
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	default:
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
-
-	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 }
 
 func (r *KrumkakeMachineReconciler) reconcileDelete(ctx context.MachineContext) (ctrl.Result, error) {
@@ -280,6 +283,62 @@ func (r *KrumkakeMachineReconciler) reconcileDelete(ctx context.MachineContext) 
 	}
 
 	controllerutil.RemoveFinalizer(ctx.KrumkakeMachine, infrastructurev1beta1.MachineFinalizer)
+	return ctrl.Result{}, nil
+}
+
+func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (ctrl.Result, error) {
+	if ctx.Machine.Status.NodeRef.Name == "" {
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
+	kubeconfigSecretName := types.NamespacedName{Namespace: ctx.KrumkakeCluster.Name, Name: ctx.KrumkakeCluster.Name + "-kubeconfig"}
+	kubeconfigSecret := &corev1.Secret{}
+	if err := r.Get(ctx, kubeconfigSecretName, kubeconfigSecret); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	kubeconfigSecretValue, ok := kubeconfigSecret.Data["value"]
+	if !ok {
+		return ctrl.Result{}, fmt.Errorf("no value found in the kubeconfig secret")
+	}
+
+	restConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeconfigSecretValue)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	workloadClusterClient, err := client.New(restConfig, client.Options{})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	nodeName := types.NamespacedName{Name: ctx.Machine.Status.NodeRef.Name}
+	if err := workloadClusterClient.Get(ctx, nodeName, ctx.Node); err != nil {
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
+	patchHelper, err := patch.NewHelper(ctx.Node, workloadClusterClient)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	defer func() {
+		if err := ctx.PatchNode(patchHelper); err != nil {
+			ctx.Logger.Error(err, "failed to patch Node")
+		}
+	}()
+
+	ctx.Node.Status.Addresses = make([]corev1.NodeAddress, 0, len(ctx.KrumkakeMachine.Status.Addresses))
+	for _, address := range ctx.KrumkakeMachine.Status.Addresses {
+		ctx.Node.Status.Addresses = append(ctx.Node.Status.Addresses, corev1.NodeAddress{
+			Type:    corev1.NodeAddressType(address.Type),
+			Address: address.Address,
+		})
+	}
+
+	ctx.Node.Spec.Taints = slices.DeleteFunc(ctx.Node.Spec.Taints, func(taint corev1.Taint) bool {
+		return taint.MatchTaint(&corev1.Taint{Key: cloudproviderapi.TaintExternalCloudProvider, Effect: corev1.TaintEffectNoSchedule})
+	})
+
 	return ctrl.Result{}, nil
 }
 
