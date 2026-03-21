@@ -307,31 +307,29 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 	}
 
 	nodeName := types.NamespacedName{Name: ctx.Machine.Status.NodeRef.Name}
-	if err := workloadClusterClient.Get(ctx, nodeName, ctx.Node); err != nil {
+	node := &corev1.Node{}
+	if err := workloadClusterClient.Get(ctx, nodeName, node); err != nil {
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	patchHelper, err := patch.NewHelper(ctx.Node, workloadClusterClient)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	defer func() {
-		if err := ctx.PatchNode(patchHelper); err != nil {
-			ctx.Logger.Error(err, "failed to patch Node")
-		}
-	}()
-
-	ctx.Node.Status.Addresses = make([]corev1.NodeAddress, 0, len(ctx.KrumkakeMachine.Status.Addresses))
+	newNode := node.DeepCopy()
+	newNode.Status.Addresses = make([]corev1.NodeAddress, 0, len(ctx.KrumkakeMachine.Status.Addresses))
 	for _, address := range ctx.KrumkakeMachine.Status.Addresses {
-		ctx.Node.Status.Addresses = append(ctx.Node.Status.Addresses, corev1.NodeAddress{
+		newNode.Status.Addresses = append(newNode.Status.Addresses, corev1.NodeAddress{
 			Type:    corev1.NodeAddressType(address.Type),
 			Address: address.Address,
 		})
 	}
+	if err := workloadClusterClient.Status().Patch(ctx, newNode, client.StrategicMergeFrom(node, client.MergeFromWithOptimisticLock{})); err != nil {
+		return ctrl.Result{}, nil
+	}
 
-	ctx.Node.Spec.Taints = slices.DeleteFunc(ctx.Node.Spec.Taints, func(taint corev1.Taint) bool {
+	newNode.Spec.Taints = slices.DeleteFunc(node.Spec.Taints, func(taint corev1.Taint) bool {
 		return taint.MatchTaint(&corev1.Taint{Key: cloudproviderapi.TaintExternalCloudProvider, Effect: corev1.TaintEffectNoSchedule})
 	})
+	if err := workloadClusterClient.Patch(ctx, newNode, client.StrategicMergeFrom(node, client.MergeFromWithOptimisticLock{})); err != nil {
+		return ctrl.Result{}, nil
+	}
 
 	return ctrl.Result{}, nil
 }
