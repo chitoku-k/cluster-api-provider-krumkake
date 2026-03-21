@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -145,11 +144,6 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 			return ctrl.Result{}, fmt.Errorf("no value found in the secret")
 		}
 
-		var userData bytes.Buffer
-		_, _ = userData.Write(dataSecretValue)
-		_, _ = userData.WriteString("\n")
-		_, _ = userData.WriteString("prefer_fqdn_over_hostname: true")
-
 		krumkakeImageName := types.NamespacedName{Namespace: ctx.KrumkakeMachine.Namespace, Name: ctx.KrumkakeMachine.Spec.ImageName}
 		krumkakeImage := &infrastructurev1beta1.KrumkakeImage{}
 		if err := r.Get(ctx, krumkakeImageName, krumkakeImage); err != nil {
@@ -183,7 +177,7 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 			AttachVPC:       attachVPC,
 			VPCOnly:         &ctx.KrumkakeMachine.Spec.Vultr.VPCOnly,
 			SSHKeys:         ctx.KrumkakeMachine.Spec.Vultr.SSHKeys,
-			UserData:        base64.StdEncoding.EncodeToString(userData.Bytes()),
+			UserData:        base64.StdEncoding.EncodeToString(dataSecretValue),
 		})
 	} else if instanceID, ok := strings.CutPrefix(ctx.KrumkakeMachine.Spec.ProviderID, "vultr://"); ok {
 		instance, res, err = r.InstanceService.Get(ctx, instanceID)
