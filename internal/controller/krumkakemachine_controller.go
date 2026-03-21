@@ -285,7 +285,7 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	kubeconfigSecretName := types.NamespacedName{Namespace: ctx.KrumkakeCluster.Name, Name: ctx.KrumkakeCluster.Name + "-kubeconfig"}
+	kubeconfigSecretName := types.NamespacedName{Namespace: ctx.Cluster.Namespace, Name: ctx.Cluster.Name + "-kubeconfig"}
 	kubeconfigSecret := &corev1.Secret{}
 	if err := r.Get(ctx, kubeconfigSecretName, kubeconfigSecret); err != nil {
 		return ctrl.Result{}, err
