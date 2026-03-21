@@ -6,6 +6,7 @@ import (
 
 	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/patch"
 )
@@ -16,6 +17,7 @@ type MachineContext struct {
 	KrumkakeCluster *infrastructurev1beta1.KrumkakeCluster
 	Machine         *clusterv1beta2.Machine
 	KrumkakeMachine *infrastructurev1beta1.KrumkakeMachine
+	Node            *corev1.Node
 	Logger          logr.Logger
 }
 
@@ -27,6 +29,10 @@ func (m *MachineContext) Patch(patchHelper *patch.Helper) error {
 			Conditions: []string{clusterv1beta2.ReadyCondition},
 		},
 	)
+}
+
+func (m *MachineContext) PatchNode(patchHelper *patch.Helper) error {
+	return patchHelper.Patch(m.Context, m.Node)
 }
 
 func (m *MachineContext) String() string {
