@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -13,8 +14,11 @@ import (
 
 	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
 	"github.com/chitoku-k/cluster-api-provider-krumkake/context"
+	projectcalicov3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 	"github.com/vultr/govultr/v3"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
@@ -259,27 +263,6 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 	}
 }
 
-func (r *KrumkakeMachineReconciler) reconcileDelete(ctx context.MachineContext) (ctrl.Result, error) {
-	if instanceID, ok := strings.CutPrefix(ctx.KrumkakeMachine.Spec.ProviderID, "vultr://"); ok {
-		instance, res, err := r.InstanceService.Get(ctx, instanceID)
-		if err != nil {
-			if res != nil && res.StatusCode == http.StatusNotFound {
-				ctx.KrumkakeMachine.Spec.ProviderID = ""
-				ctx.KrumkakeMachine.Status.Vultr = infrastructurev1beta1.KrumkakeMachineVultrStatus{}
-				return ctrl.Result{}, nil
-			}
-			return ctrl.Result{}, err
-		}
-
-		if err := r.InstanceService.Delete(ctx, instance.ID); err != nil {
-			return ctrl.Result{}, err
-		}
-	}
-
-	controllerutil.RemoveFinalizer(ctx.KrumkakeMachine, infrastructurev1beta1.MachineFinalizer)
-	return ctrl.Result{}, nil
-}
-
 func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (ctrl.Result, error) {
 	if ctx.Machine.Status.NodeRef.Name == "" {
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
@@ -301,36 +284,98 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 		return ctrl.Result{}, err
 	}
 
-	workloadClusterClient, err := client.New(restConfig, client.Options{})
+	ctx.WorkloadClusterClient, err = client.New(restConfig, client.Options{})
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	nodeName := types.NamespacedName{Name: ctx.Machine.Status.NodeRef.Name}
 	node := &corev1.Node{}
-	if err := workloadClusterClient.Get(ctx, nodeName, node); err != nil {
+	if err := ctx.WorkloadClusterClient.Get(ctx, nodeName, node); err != nil {
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	newNode := node.DeepCopy()
-	newNode.Status.Addresses = make([]corev1.NodeAddress, 0, len(ctx.KrumkakeMachine.Status.Addresses))
+	ctx.Node = node.DeepCopy()
+	ctx.Node.Status.Addresses = make([]corev1.NodeAddress, 0, len(ctx.KrumkakeMachine.Status.Addresses))
 	for _, address := range ctx.KrumkakeMachine.Status.Addresses {
-		newNode.Status.Addresses = append(newNode.Status.Addresses, corev1.NodeAddress{
+		ctx.Node.Status.Addresses = append(ctx.Node.Status.Addresses, corev1.NodeAddress{
 			Type:    corev1.NodeAddressType(address.Type),
 			Address: address.Address,
 		})
 	}
-	if err := workloadClusterClient.Status().Patch(ctx, newNode, client.StrategicMergeFrom(node, client.MergeFromWithOptimisticLock{})); err != nil {
-		return ctrl.Result{}, nil
+	if err := ctx.WorkloadClusterClient.Status().Patch(ctx, ctx.Node, client.MergeFrom(node)); err != nil {
+		return ctrl.Result{}, err
 	}
 
-	newNode.Spec.Taints = slices.DeleteFunc(node.Spec.Taints, func(taint corev1.Taint) bool {
+	ctx.Node.Spec.Taints = slices.DeleteFunc(node.Spec.Taints, func(taint corev1.Taint) bool {
 		return taint.MatchTaint(&corev1.Taint{Key: cloudproviderapi.TaintExternalCloudProvider, Effect: corev1.TaintEffectNoSchedule})
 	})
-	if err := workloadClusterClient.Patch(ctx, newNode, client.StrategicMergeFrom(node, client.MergeFromWithOptimisticLock{})); err != nil {
+	if err := ctx.WorkloadClusterClient.Patch(ctx, ctx.Node, client.MergeFrom(node)); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return r.reconcileIPPool(ctx)
+}
+
+func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) (ctrl.Result, error) {
+	var cidr string
+	for _, address := range ctx.Node.Status.Addresses {
+		if address.Type == corev1.NodeExternalIP && len(net.ParseIP(address.Address)) == net.IPv6len {
+			cidr = address.Address
+			break
+		}
+	}
+	if cidr == "" {
 		return ctrl.Result{}, nil
 	}
 
+	ipPoolName := types.NamespacedName{Name: ctx.Node.Name}
+	ipPool := &projectcalicov3.IPPool{}
+	if err := ctx.WorkloadClusterClient.Get(ctx, ipPoolName, ipPool); apierrors.IsNotFound(err) {
+		ipPool := &projectcalicov3.IPPool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: ctx.Node.Name,
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(ctx.Node, ctx.Node.GroupVersionKind()),
+				},
+			},
+			Spec: projectcalicov3.IPPoolSpec{
+				CIDR:             cidr,
+				VXLANMode:        projectcalicov3.VXLANModeNever,
+				IPIPMode:         projectcalicov3.IPIPModeNever,
+				NATOutgoing:      false,
+				DisableBGPExport: true,
+				NodeSelector:     fmt.Sprintf("%s == %q", corev1.LabelHostname, ctx.Machine.Labels[corev1.LabelHostname]),
+			},
+		}
+		if err := ctx.WorkloadClusterClient.Create(ctx, ipPool); err != nil {
+			return ctrl.Result{}, err
+		}
+	} else if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *KrumkakeMachineReconciler) reconcileDelete(ctx context.MachineContext) (ctrl.Result, error) {
+	if instanceID, ok := strings.CutPrefix(ctx.KrumkakeMachine.Spec.ProviderID, "vultr://"); ok {
+		instance, res, err := r.InstanceService.Get(ctx, instanceID)
+		if err != nil {
+			if res != nil && res.StatusCode == http.StatusNotFound {
+				ctx.KrumkakeMachine.Spec.ProviderID = ""
+				ctx.KrumkakeMachine.Status.Vultr = infrastructurev1beta1.KrumkakeMachineVultrStatus{}
+				return ctrl.Result{}, nil
+			}
+			return ctrl.Result{}, err
+		}
+
+		if err := r.InstanceService.Delete(ctx, instance.ID); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	controllerutil.RemoveFinalizer(ctx.KrumkakeMachine, infrastructurev1beta1.MachineFinalizer)
 	return ctrl.Result{}, nil
 }
 
