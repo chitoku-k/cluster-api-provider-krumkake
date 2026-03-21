@@ -8,6 +8,7 @@ import (
 
 	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
 	"github.com/chitoku-k/cluster-api-provider-krumkake/internal/controller"
+	projectcalicov3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 	"github.com/vultr/govultr/v3"
 	"golang.org/x/oauth2"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -36,6 +37,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(clusterv1beta2.AddToScheme(scheme))
+	utilruntime.Must(projectcalicov3.AddToScheme(scheme))
 	utilruntime.Must(infrastructurev1beta1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
