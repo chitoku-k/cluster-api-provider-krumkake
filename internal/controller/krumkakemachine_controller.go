@@ -327,18 +327,18 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 }
 
 func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) (ctrl.Result, error) {
-	var cidr string
+	var cidr netip.Prefix
 	for _, address := range ctx.Node.Status.Addresses {
 		if address.Type != corev1.NodeExternalIP {
 			continue
 		}
-		if addr, _ := netip.ParseAddr(address.Address); addr.Is4() {
+		addr, _ := netip.ParseAddr(address.Address)
+		if !addr.Is4() {
 			continue
 		}
-		cidr = address.Address
-		break
+		cidr, _ = addr.Prefix(64)
 	}
-	if cidr == "" {
+	if !cidr.IsValid() {
 		return ctrl.Result{}, nil
 	}
 
@@ -353,7 +353,7 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 				},
 			},
 			Spec: projectcalicov3.IPPoolSpec{
-				CIDR:             cidr,
+				CIDR:             cidr.String(),
 				VXLANMode:        projectcalicov3.VXLANModeNever,
 				IPIPMode:         projectcalicov3.IPIPModeNever,
 				NATOutgoing:      false,
