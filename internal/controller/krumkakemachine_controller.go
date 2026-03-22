@@ -284,7 +284,12 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 		return ctrl.Result{}, err
 	}
 
-	ctx.WorkloadClusterClient, err = client.New(restConfig, client.Options{})
+	scheme := runtime.NewScheme()
+	if err := projectcalicov3.AddToScheme(scheme); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	ctx.WorkloadClusterClient, err = client.New(restConfig, client.Options{Scheme: scheme})
 	if err != nil {
 		return ctrl.Result{}, err
 	}
