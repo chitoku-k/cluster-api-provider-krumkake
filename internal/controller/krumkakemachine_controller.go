@@ -358,7 +358,7 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 				IPIPMode:         projectcalicov3.IPIPModeNever,
 				NATOutgoing:      false,
 				DisableBGPExport: true,
-				NodeSelector:     fmt.Sprintf("%s == %q", corev1.LabelHostname, ctx.Machine.Labels[corev1.LabelHostname]),
+				NodeSelector:     fmt.Sprintf("%s == %q", corev1.LabelHostname, ctx.Node.Labels[corev1.LabelHostname]),
 			},
 		}
 		if err := ctx.WorkloadClusterClient.Create(ctx, ipPool); err != nil {
