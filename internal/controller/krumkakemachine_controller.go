@@ -345,7 +345,7 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 			ObjectMeta: metav1.ObjectMeta{
 				Name: ctx.Node.Name,
 				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(ctx.Node, ctx.Node.GroupVersionKind()),
+					*metav1.NewControllerRef(ctx.Node, corev1.SchemeGroupVersion.WithKind("Node")),
 				},
 			},
 			Spec: projectcalicov3.IPPoolSpec{
