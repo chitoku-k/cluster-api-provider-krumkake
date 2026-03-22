@@ -21,6 +21,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	cloudproviderapi "k8s.io/cloud-provider/api"
 	"k8s.io/utils/ptr"
@@ -285,6 +286,9 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 	}
 
 	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		return ctrl.Result{}, err
+	}
 	if err := projectcalicov3.AddToScheme(scheme); err != nil {
 		return ctrl.Result{}, err
 	}
