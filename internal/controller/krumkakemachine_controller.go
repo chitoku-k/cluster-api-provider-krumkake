@@ -333,7 +333,7 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 			continue
 		}
 		addr, _ := netip.ParseAddr(address.Address)
-		if !addr.Is4() {
+		if !addr.Is6() {
 			continue
 		}
 		cidr, _ = addr.Prefix(64)
