@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
@@ -329,10 +329,14 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) (ctrl.Result, error) {
 	var cidr string
 	for _, address := range ctx.Node.Status.Addresses {
-		if address.Type == corev1.NodeExternalIP && len(net.ParseIP(address.Address)) == net.IPv6len {
-			cidr = address.Address
-			break
+		if address.Type != corev1.NodeExternalIP {
+			continue
 		}
+		if addr, _ := netip.ParseAddr(address.Address); addr.Is4() {
+			continue
+		}
+		cidr = address.Address
+		break
 	}
 	if cidr == "" {
 		return ctrl.Result{}, nil
