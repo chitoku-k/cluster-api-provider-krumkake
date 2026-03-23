@@ -98,9 +98,9 @@ type KrumkakeMachineVultrStatus struct {
 	// +optional
 	PowerStatus *PowerStatus `json:"powerStatus,omitempty"`
 
-	// ServerState represents the state of server.
+	// ServerStatus represents the state of server.
 	// +optional
-	ServerState *ServerState `json:"serverState,omitempty"`
+	ServerStatus *ServerStatus `json:"serverStatus,omitempty"`
 }
 
 // +kubebuilder:object:root=true

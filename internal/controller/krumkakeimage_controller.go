@@ -63,8 +63,8 @@ func (r *KrumkakeImageReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 }
 
 func (r *KrumkakeImageReconciler) reconcileNormal(ctx context.ImageContext) (ctrl.Result, error) {
-	switch ctx.KrumkakeImage.Status.Vultr.GetSnapshotState() {
-	case infrastructurev1beta1.SnapshotStateNone:
+	switch ctx.KrumkakeImage.Status.Vultr.GetSnapshotStatus() {
+	case infrastructurev1beta1.SnapshotStatusNone:
 		krumkakeMachineList := &infrastructurev1beta1.KrumkakeMachineList{}
 		if err := r.List(ctx, krumkakeMachineList, client.MatchingFields{"spec.imageName": ctx.KrumkakeImage.Name}); err != nil {
 			return ctrl.Result{}, err
@@ -79,28 +79,28 @@ func (r *KrumkakeImageReconciler) reconcileNormal(ctx context.ImageContext) (ctr
 
 		snapshot, _, err := r.SnapshotService.CreateFromURL(ctx, &govultr.SnapshotURLReq{URL: ctx.KrumkakeImage.Spec.URL, UEFI: new(ctx.KrumkakeImage.Spec.UEFI)})
 		if err != nil {
-			ctx.KrumkakeImage.Status.Vultr.SnapshotState = new(infrastructurev1beta1.SnapshotStateError)
+			ctx.KrumkakeImage.Status.Vultr.SnapshotStatus = new(infrastructurev1beta1.SnapshotStatusError)
 			return ctrl.Result{}, err
 		}
 		ctx.KrumkakeImage.Status.Vultr.SnapshotID = snapshot.ID
 
 		switch snapshot.Status {
 		case "pending":
-			ctx.KrumkakeImage.Status.Vultr.SnapshotState = new(infrastructurev1beta1.SnapshotStatePending)
+			ctx.KrumkakeImage.Status.Vultr.SnapshotStatus = new(infrastructurev1beta1.SnapshotStatusPending)
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 
 		default:
 			ctx.Logger.Info("unexpected snapshot status", "id", snapshot.ID, "status", snapshot.Status)
-			ctx.KrumkakeImage.Status.Vultr.SnapshotState = new(infrastructurev1beta1.SnapshotStateError)
+			ctx.KrumkakeImage.Status.Vultr.SnapshotStatus = new(infrastructurev1beta1.SnapshotStatusError)
 			return ctrl.Result{}, nil
 		}
 
-	case infrastructurev1beta1.SnapshotStatePending:
+	case infrastructurev1beta1.SnapshotStatusPending:
 		snapshot, res, err := r.SnapshotService.Get(ctx, ctx.KrumkakeImage.Status.Vultr.GetSnapshotID())
 		if err != nil {
 			if res != nil && res.StatusCode == http.StatusNotFound {
 				ctx.KrumkakeImage.Status.Vultr.SnapshotID = ""
-				ctx.KrumkakeImage.Status.Vultr.SnapshotState = new(infrastructurev1beta1.SnapshotStateError)
+				ctx.KrumkakeImage.Status.Vultr.SnapshotStatus = new(infrastructurev1beta1.SnapshotStatusError)
 				return ctrl.Result{}, nil
 			}
 			return ctrl.Result{}, err
@@ -108,14 +108,14 @@ func (r *KrumkakeImageReconciler) reconcileNormal(ctx context.ImageContext) (ctr
 
 		switch snapshot.Status {
 		case "complete":
-			ctx.KrumkakeImage.Status.Vultr.SnapshotState = new(infrastructurev1beta1.SnapshotStateComplete)
+			ctx.KrumkakeImage.Status.Vultr.SnapshotStatus = new(infrastructurev1beta1.SnapshotStatusComplete)
 
 		case "pending":
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 
 		default:
 			ctx.Logger.Info("unexpected snapshot status", "id", snapshot.ID, "status", snapshot.Status)
-			ctx.KrumkakeImage.Status.Vultr.SnapshotState = new(infrastructurev1beta1.SnapshotStateError)
+			ctx.KrumkakeImage.Status.Vultr.SnapshotStatus = new(infrastructurev1beta1.SnapshotStatusError)
 			return ctrl.Result{}, nil
 		}
 	}

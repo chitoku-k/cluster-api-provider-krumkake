@@ -155,7 +155,7 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 			return ctrl.Result{}, err
 		}
 
-		if ptr.Deref(krumkakeImage.Status.Vultr.SnapshotState, infrastructurev1beta1.SnapshotStateNone) != infrastructurev1beta1.SnapshotStateComplete {
+		if ptr.Deref(krumkakeImage.Status.Vultr.SnapshotStatus, infrastructurev1beta1.SnapshotStatusNone) != infrastructurev1beta1.SnapshotStatusComplete {
 			return ctrl.Result{}, nil
 		}
 
@@ -196,7 +196,7 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 			ctx.KrumkakeMachine.Status.Vultr = infrastructurev1beta1.KrumkakeMachineVultrStatus{}
 			return ctrl.Result{}, nil
 		}
-		ctx.KrumkakeMachine.Status.Vultr.ServerState = new(infrastructurev1beta1.ServerStateError)
+		ctx.KrumkakeMachine.Status.Vultr.ServerStatus = new(infrastructurev1beta1.ServerStatusError)
 		return ctrl.Result{}, err
 	}
 
@@ -236,6 +236,17 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 	ctx.KrumkakeMachine.Status.RAM = instance.RAM
 	ctx.KrumkakeMachine.Status.Storage = instance.Disk
 
+	switch instance.Status {
+	case "active":
+		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusActive)
+	case "suspended":
+		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusSuspended)
+	case "closed":
+		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusClosed)
+	case "pending":
+		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusPending)
+	}
+
 	switch instance.PowerStatus {
 	case "starting":
 		ctx.KrumkakeMachine.Status.Vultr.PowerStatus = new(infrastructurev1beta1.PowerStatusStarting)
@@ -245,23 +256,23 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 		ctx.KrumkakeMachine.Status.Vultr.PowerStatus = new(infrastructurev1beta1.PowerStatusRunning)
 	}
 
-	switch instance.Status {
-	case "active":
-		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusActive)
+	switch instance.ServerStatus {
+	case "none":
+		ctx.KrumkakeMachine.Status.Vultr.ServerStatus = new(infrastructurev1beta1.ServerStatusNone)
+		return ctrl.Result{}, nil
+	case "locked":
+		ctx.KrumkakeMachine.Status.Vultr.ServerStatus = new(infrastructurev1beta1.ServerStatusLocked)
+		return ctrl.Result{}, nil
+	case "installingbooting":
+		ctx.KrumkakeMachine.Status.Vultr.ServerStatus = new(infrastructurev1beta1.ServerStatusInstallingBooting)
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	case "ok":
+		ctx.KrumkakeMachine.Status.Vultr.ServerStatus = new(infrastructurev1beta1.ServerStatusOK)
 		ctx.KrumkakeMachine.Status.Initialization.Provisioned = new(true)
 		return r.reconcileNode(ctx)
-	case "suspended":
-		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusSuspended)
-		return ctrl.Result{}, nil
-	case "closed":
-		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusClosed)
-		return ctrl.Result{}, nil
-	case "pending":
-		ctx.KrumkakeMachine.Status.Vultr.SubscriptionStatus = new(infrastructurev1beta1.SubscriptionStatusPending)
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-	default:
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
+
+	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 }
 
 func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (ctrl.Result, error) {
