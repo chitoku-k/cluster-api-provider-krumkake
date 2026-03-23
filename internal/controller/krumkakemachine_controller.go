@@ -2,8 +2,11 @@ package controller
 
 import (
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/netip"
@@ -15,13 +18,18 @@ import (
 	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
 	"github.com/chitoku-k/cluster-api-provider-krumkake/context"
 	projectcalicov3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
+	clientprojectcalicov3 "github.com/projectcalico/api/pkg/client/clientset_generated/clientset/typed/projectcalico/v3"
 	"github.com/vultr/govultr/v3"
+	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/apimachinery/pkg/util/sets"
+	clientcertificatesv1 "k8s.io/client-go/kubernetes/typed/certificates/v1"
+	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	cloudproviderapi "k8s.io/cloud-provider/api"
 	"k8s.io/utils/ptr"
@@ -296,22 +304,23 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 		return ctrl.Result{}, err
 	}
 
-	scheme := runtime.NewScheme()
-	if err := clientgoscheme.AddToScheme(scheme); err != nil {
-		return ctrl.Result{}, err
-	}
-	if err := projectcalicov3.AddToScheme(scheme); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	ctx.WorkloadClusterClient, err = client.New(restConfig, client.Options{Scheme: scheme})
+	ctx.WorkloadClusterCoreV1Client, err = clientcorev1.NewForConfig(restConfig)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	nodeName := types.NamespacedName{Name: ctx.Machine.Status.NodeRef.Name}
-	node := &corev1.Node{}
-	if err := ctx.WorkloadClusterClient.Get(ctx, nodeName, node); err != nil {
+	ctx.WorkloadClusterCertificatesV1Client, err = clientcertificatesv1.NewForConfig(restConfig)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	ctx.WorkloadClusterProjectcalicoV3Client, err = clientprojectcalicov3.NewForConfig(restConfig)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	node, err := ctx.WorkloadClusterCoreV1Client.Nodes().Get(ctx, ctx.Machine.Status.NodeRef.Name, metav1.GetOptions{})
+	if err != nil {
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
@@ -323,21 +332,136 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 			Address: address.Address,
 		})
 	}
-	if err := ctx.WorkloadClusterClient.Status().Patch(ctx, ctx.Node, client.MergeFrom(node)); err != nil {
+	nodePatch := client.MergeFrom(node)
+	nodePatchData, err := nodePatch.Data(ctx.Node)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	ctx.Node, err = ctx.WorkloadClusterCoreV1Client.Nodes().PatchStatus(ctx, node.Name, nodePatchData)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	ctx.Node.Spec.Taints = slices.DeleteFunc(node.Spec.Taints, func(taint corev1.Taint) bool {
 		return taint.MatchTaint(&corev1.Taint{Key: cloudproviderapi.TaintExternalCloudProvider, Effect: corev1.TaintEffectNoSchedule})
 	})
-	if err := ctx.WorkloadClusterClient.Patch(ctx, ctx.Node, client.MergeFrom(node)); err != nil {
+	nodePatch = client.MergeFrom(node)
+	nodePatchData, err = nodePatch.Data(ctx.Node)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	ctx.Node, err = ctx.WorkloadClusterCoreV1Client.Nodes().Patch(ctx, node.Name, nodePatch.Type(), nodePatchData, metav1.PatchOptions{})
+	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	return r.reconcileIPPool(ctx)
+	if err := errors.Join(
+		r.reconcileCertificateSigningRequest(ctx),
+		r.reconcileIPPool(ctx),
+	); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
 }
 
-func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) (ctrl.Result, error) {
+func (r *KrumkakeMachineReconciler) reconcileCertificateSigningRequest(ctx context.MachineContext) error {
+	certificateSigningRequestListOptions := metav1.ListOptions{FieldSelector: fields.OneTermEqualSelector("spec.signerName", certificatesv1.KubeletServingSignerName).String()}
+	certificateSigningRequestList, err := ctx.WorkloadClusterCertificatesV1Client.CertificateSigningRequests().List(ctx, certificateSigningRequestListOptions)
+	if err != nil {
+		return err
+	}
+
+	for _, certificateSigningRequest := range certificateSigningRequestList.Items {
+		if nodeName, ok := strings.CutPrefix(certificateSigningRequest.Spec.Username, "system:node:"); !ok || nodeName != ctx.Node.Name {
+			continue
+		}
+
+		if slices.ContainsFunc(certificateSigningRequest.Status.Conditions, func(condition certificatesv1.CertificateSigningRequestCondition) bool {
+			return condition.Type == certificatesv1.CertificateApproved
+		}) {
+			continue
+		}
+
+		usages := sets.New(certificateSigningRequest.Spec.Usages...)
+		if !sets.New(certificatesv1.UsageDigitalSignature, certificatesv1.UsageKeyEncipherment, certificatesv1.UsageServerAuth).IsSuperset(usages) {
+			continue
+		}
+
+		block, _ := pem.Decode(certificateSigningRequest.Spec.Request)
+		if block == nil || block.Type != "CERTIFICATE REQUEST" {
+			continue
+		}
+
+		csr, err := x509.ParseCertificateRequest(block.Bytes)
+		if err != nil {
+			ctx.Logger.Error(err, "failed to parse request", "CertificateSigningRequest", certificateSigningRequest.Name)
+			continue
+		}
+
+		if !slices.Equal(csr.Subject.Organization, []string{"system:nodes"}) {
+			continue
+		}
+		if csr.Subject.CommonName != certificateSigningRequest.Spec.Username {
+			continue
+		}
+		if len(csr.EmailAddresses) != 0 {
+			continue
+		}
+		if len(csr.URIs) != 0 {
+			continue
+		}
+		if len(csr.DNSNames) == 0 && len(csr.IPAddresses) == 0 {
+			continue
+		}
+
+		dnsNames := sets.New(csr.DNSNames...)
+		ipAddresses := sets.New[netip.Addr]()
+		for _, ipAddress := range csr.IPAddresses {
+			ipAddr, ok := netip.AddrFromSlice(ipAddress)
+			if !ok {
+				continue
+			}
+			ipAddresses.Insert(ipAddr)
+		}
+
+		nodeDNSNames := sets.New(ctx.Node.Name)
+		nodeIPAddresses := sets.New[netip.Addr]()
+		for _, address := range ctx.Node.Status.Addresses {
+			switch address.Type {
+			case corev1.NodeInternalDNS, corev1.NodeExternalDNS:
+				nodeDNSNames.Insert(address.Address)
+			case corev1.NodeInternalIP, corev1.NodeExternalIP:
+				ipAddr, err := netip.ParseAddr(address.Address)
+				if err != nil {
+					continue
+				}
+				nodeIPAddresses.Insert(ipAddr)
+			}
+		}
+
+		if !nodeDNSNames.IsSuperset(dnsNames) || !nodeIPAddresses.IsSuperset(ipAddresses) {
+			continue
+		}
+
+		certificateSigningRequest.Status.Conditions = append(certificateSigningRequest.Status.Conditions, certificatesv1.CertificateSigningRequestCondition{
+			Type:           certificatesv1.CertificateApproved,
+			Status:         corev1.ConditionTrue,
+			Reason:         "KrumkakeMachineApprove",
+			Message:        "This CSR was approved by cluster-api-provider-krumkake.",
+			LastUpdateTime: metav1.Now(),
+		})
+
+		_, err = ctx.WorkloadClusterCertificatesV1Client.CertificateSigningRequests().UpdateApproval(ctx, certificateSigningRequest.Name, &certificateSigningRequest, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) error {
 	var cidr netip.Prefix
 	for _, address := range ctx.Node.Status.Addresses {
 		if address.Type != corev1.NodeExternalIP {
@@ -350,12 +474,10 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 		cidr, _ = addr.Prefix(64)
 	}
 	if !cidr.IsValid() {
-		return ctrl.Result{}, nil
+		return nil
 	}
 
-	ipPoolName := types.NamespacedName{Name: ctx.Node.Name}
-	ipPool := &projectcalicov3.IPPool{}
-	if err := ctx.WorkloadClusterClient.Get(ctx, ipPoolName, ipPool); apierrors.IsNotFound(err) {
+	if _, err := ctx.WorkloadClusterProjectcalicoV3Client.IPPools().Get(ctx, ctx.Node.Name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
 		ipPool := &projectcalicov3.IPPool{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: ctx.Node.Name,
@@ -372,14 +494,14 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 				NodeSelector:     fmt.Sprintf("%s == %q", corev1.LabelHostname, ctx.Node.Labels[corev1.LabelHostname]),
 			},
 		}
-		if err := ctx.WorkloadClusterClient.Create(ctx, ipPool); err != nil {
-			return ctrl.Result{}, err
+		if _, err := ctx.WorkloadClusterProjectcalicoV3Client.IPPools().Create(ctx, ipPool, metav1.CreateOptions{}); err != nil {
+			return err
 		}
 	} else if err != nil {
-		return ctrl.Result{}, err
+		return err
 	}
 
-	return ctrl.Result{}, nil
+	return nil
 }
 
 func (r *KrumkakeMachineReconciler) reconcileDelete(ctx context.MachineContext) (ctrl.Result, error) {
