@@ -42,17 +42,17 @@ type KrumkakeImageVultrStatus struct {
 	// +optional
 	SnapshotID string `json:"snapshotID,omitempty"`
 
-	// SnapshotState represents the state of the snapshot.
+	// SnapshotStatus represents the status of the snapshot.
 	// +optional
-	SnapshotState *SnapshotState `json:"snapshotState,omitempty"`
+	SnapshotStatus *SnapshotStatus `json:"snapshotStatus,omitempty"`
 }
 
 func (k *KrumkakeImageVultrStatus) GetSnapshotID() string {
 	return k.SnapshotID
 }
 
-func (k *KrumkakeImageVultrStatus) GetSnapshotState() SnapshotState {
-	return ptr.Deref(k.SnapshotState, SnapshotStateNone)
+func (k *KrumkakeImageVultrStatus) GetSnapshotStatus() SnapshotStatus {
+	return ptr.Deref(k.SnapshotStatus, SnapshotStatusNone)
 }
 
 // +kubebuilder:object:root=true

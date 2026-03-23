@@ -19,25 +19,24 @@ const (
 	PowerStatusRunning  = PowerStatus("Running")
 )
 
-// ServerState represents the state of server.
-type ServerState string
+// ServerStatus represents the status of server.
+type ServerStatus string
 
 const (
-	ServerStateNone        = ServerState("None")
-	ServerStateLocked      = ServerState("Locked")
-	ServerStateBooting     = ServerState("Booting")
-	ServerStateIsoMounting = ServerState("IsoMounting")
-	ServerStateOK          = ServerState("OK")
-	ServerStateError       = ServerState("Error")
+	ServerStatusNone              = ServerStatus("None")
+	ServerStatusLocked            = ServerStatus("Locked")
+	ServerStatusInstallingBooting = ServerStatus("InstallingBooting")
+	ServerStatusOK                = ServerStatus("OK")
+	ServerStatusError             = ServerStatus("Error")
 )
 
-// SnapshotState represents the state of snapshot.
-type SnapshotState string
+// SnapshotStatus represents the status of snapshot.
+type SnapshotStatus string
 
 const (
-	SnapshotStateNone     = SnapshotState("None")
-	SnapshotStatePending  = SnapshotState("Pending")
-	SnapshotStateComplete = SnapshotState("Complete")
-	SnapshotStateDeleted  = SnapshotState("Deleted")
-	SnapshotStateError    = SnapshotState("Error")
+	SnapshotStatusNone     = SnapshotStatus("None")
+	SnapshotStatusPending  = SnapshotStatus("Pending")
+	SnapshotStatusComplete = SnapshotStatus("Complete")
+	SnapshotStatusDeleted  = SnapshotStatus("Deleted")
+	SnapshotStatusError    = SnapshotStatus("Error")
 )
