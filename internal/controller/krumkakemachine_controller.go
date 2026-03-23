@@ -267,13 +267,10 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 	switch instance.ServerStatus {
 	case "none":
 		ctx.KrumkakeMachine.Status.Vultr.ServerStatus = new(infrastructurev1beta1.ServerStatusNone)
-		return ctrl.Result{}, nil
 	case "locked":
 		ctx.KrumkakeMachine.Status.Vultr.ServerStatus = new(infrastructurev1beta1.ServerStatusLocked)
-		return ctrl.Result{}, nil
 	case "installingbooting":
 		ctx.KrumkakeMachine.Status.Vultr.ServerStatus = new(infrastructurev1beta1.ServerStatusInstallingBooting)
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	case "ok":
 		ctx.KrumkakeMachine.Status.Vultr.ServerStatus = new(infrastructurev1beta1.ServerStatusOK)
 		ctx.KrumkakeMachine.Status.Initialization.Provisioned = new(true)
