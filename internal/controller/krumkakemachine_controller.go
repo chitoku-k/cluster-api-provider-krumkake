@@ -553,6 +553,32 @@ func (r *KrumkakeMachineReconciler) KrumkakeClusterToKrumkakeMachines(ctx contex
 	return result
 }
 
+func (r *KrumkakeMachineReconciler) KrumkakeImageToKrumkakeMachines(ctx context.Context, obj client.Object) []ctrl.Request {
+	var result []ctrl.Request
+	log := ctrl.LoggerFrom(ctx)
+
+	krumkakeImage := obj.(*infrastructurev1beta1.KrumkakeImage)
+	if ptr.Deref(krumkakeImage.Status.Vultr.SnapshotStatus, infrastructurev1beta1.SnapshotStatusNone) != infrastructurev1beta1.SnapshotStatusComplete {
+		return nil
+	}
+
+	krumkakeMachineList := &infrastructurev1beta1.KrumkakeMachineList{}
+	if err := r.List(ctx, krumkakeMachineList, client.InNamespace(krumkakeImage.Namespace)); err != nil {
+		log.Error(err, "failed to list machines")
+		return nil
+	}
+
+	for _, krumkakeMachine := range krumkakeMachineList.Items {
+		if krumkakeMachine.Spec.ImageName != krumkakeImage.Name {
+			continue
+		}
+		name := client.ObjectKeyFromObject(&krumkakeMachine)
+		result = append(result, ctrl.Request{NamespacedName: name})
+	}
+
+	return result
+}
+
 func (r *KrumkakeMachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	clusterToKrumkakeMachines, err := clusterutil.ClusterToTypedObjectsMapper(mgr.GetClient(), &infrastructurev1beta1.KrumkakeMachineList{}, mgr.GetScheme())
 	if err != nil {
@@ -569,6 +595,10 @@ func (r *KrumkakeMachineReconciler) SetupWithManager(ctx context.Context, mgr ct
 		Watches(
 			&infrastructurev1beta1.KrumkakeCluster{},
 			handler.EnqueueRequestsFromMapFunc(r.KrumkakeClusterToKrumkakeMachines),
+		).
+		Watches(
+			&infrastructurev1beta1.KrumkakeImage{},
+			handler.EnqueueRequestsFromMapFunc(r.KrumkakeImageToKrumkakeMachines),
 		).
 		Watches(
 			&clusterv1beta2.Cluster{},
