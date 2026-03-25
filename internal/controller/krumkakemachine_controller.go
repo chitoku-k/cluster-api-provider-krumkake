@@ -468,7 +468,7 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 		if !addr.Is6() {
 			continue
 		}
-		cidr, _ = addr.Prefix(64)
+		cidr, _ = addr.Prefix(80)
 	}
 	if !cidr.IsValid() {
 		return nil
@@ -483,12 +483,11 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 				},
 			},
 			Spec: projectcalicov3.IPPoolSpec{
-				CIDR:             cidr.String(),
-				VXLANMode:        projectcalicov3.VXLANModeNever,
-				IPIPMode:         projectcalicov3.IPIPModeNever,
-				NATOutgoing:      false,
-				DisableBGPExport: true,
-				NodeSelector:     fmt.Sprintf("%s == %q", corev1.LabelHostname, ctx.Node.Labels[corev1.LabelHostname]),
+				CIDR:         cidr.String(),
+				VXLANMode:    projectcalicov3.VXLANModeNever,
+				IPIPMode:     projectcalicov3.IPIPModeNever,
+				NATOutgoing:  false,
+				NodeSelector: fmt.Sprintf("%s == %q", corev1.LabelHostname, ctx.Node.Labels[corev1.LabelHostname]),
 			},
 		}
 		if _, err := ctx.WorkloadClusterProjectcalicoV3Client.IPPools().Create(ctx, ipPool, metav1.CreateOptions{}); err != nil {
