@@ -345,10 +345,12 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	ctx.Logger.Info("Updating the addresses of the Node", "node", node.Name, "addresses", ctx.Node.Status.Addresses, "patch", string(nodePatchData))
 	ctx.Node, err = ctx.WorkloadClusterCoreV1Client.Nodes().PatchStatus(ctx, node.Name, nodePatchData)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	ctx.Logger.Info("Updated the addresses of the Node", "node", node.Name, "addresses", ctx.Node.Status.Addresses)
 
 	ctx.Node.Spec.Taints = slices.DeleteFunc(node.Spec.Taints, func(taint corev1.Taint) bool {
 		return taint.MatchTaint(&corev1.Taint{Key: cloudproviderapi.TaintExternalCloudProvider, Effect: corev1.TaintEffectNoSchedule})
