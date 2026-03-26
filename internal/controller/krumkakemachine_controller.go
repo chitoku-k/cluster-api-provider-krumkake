@@ -240,6 +240,11 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 		)
 	}
 
+	ctx.KrumkakeMachine.Status.Addresses = append(ctx.KrumkakeMachine.Status.Addresses, clusterv1beta2.MachineAddress{
+		Type:    clusterv1beta2.MachineHostName,
+		Address: instance.Hostname,
+	})
+
 	ctx.KrumkakeMachine.Status.CPU = instance.VCPUCount
 	ctx.KrumkakeMachine.Status.RAM = instance.RAM
 	ctx.KrumkakeMachine.Status.Storage = instance.Disk
@@ -320,6 +325,7 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 	if err != nil {
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
+	clear(node.Status.Addresses)
 
 	ctx.Node = node.DeepCopy()
 	ctx.Node.Status.Addresses = make([]corev1.NodeAddress, 0, len(ctx.KrumkakeMachine.Status.Addresses))
