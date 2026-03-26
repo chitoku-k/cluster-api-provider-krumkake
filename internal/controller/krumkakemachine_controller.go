@@ -32,6 +32,7 @@ import (
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	cloudproviderapi "k8s.io/cloud-provider/api"
+	nodeutil "k8s.io/component-helpers/node/util"
 	"k8s.io/utils/ptr"
 	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	clusterutil "sigs.k8s.io/cluster-api/util"
@@ -330,7 +331,6 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 	if err != nil {
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
-	clear(node.Status.Addresses)
 
 	ctx.Node = node.DeepCopy()
 	ctx.Node.Status.Addresses = make([]corev1.NodeAddress, 0, len(ctx.KrumkakeMachine.Status.Addresses))
@@ -340,23 +340,16 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 			Address: address.Address,
 		})
 	}
-	nodePatch := client.MergeFrom(node)
-	nodePatchData, err := nodePatch.Data(ctx.Node)
+	ctx.Node, _, err = nodeutil.PatchNodeStatus(ctx.WorkloadClusterCoreV1Client, types.NodeName(node.Name), node, ctx.Node)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	ctx.Logger.Info("Updating the addresses of the Node", "node", node.Name, "addresses", ctx.Node.Status.Addresses, "patch", string(nodePatchData))
-	ctx.Node, err = ctx.WorkloadClusterCoreV1Client.Nodes().PatchStatus(ctx, node.Name, nodePatchData)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	ctx.Logger.Info("Updated the addresses of the Node", "node", node.Name, "addresses", ctx.Node.Status.Addresses)
 
 	ctx.Node.Spec.Taints = slices.DeleteFunc(node.Spec.Taints, func(taint corev1.Taint) bool {
 		return taint.MatchTaint(&corev1.Taint{Key: cloudproviderapi.TaintExternalCloudProvider, Effect: corev1.TaintEffectNoSchedule})
 	})
-	nodePatch = client.MergeFrom(node)
-	nodePatchData, err = nodePatch.Data(ctx.Node)
+	nodePatch := client.MergeFrom(node)
+	nodePatchData, err := nodePatch.Data(ctx.Node)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

@@ -13,6 +13,7 @@ require (
 	k8s.io/apimachinery v0.36.0-alpha.2
 	k8s.io/client-go v0.35.3
 	k8s.io/cloud-provider v0.35.3
+	k8s.io/component-helpers v0.35.3
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
 	sigs.k8s.io/cluster-api v1.12.3
 	sigs.k8s.io/controller-runtime v0.23.3
