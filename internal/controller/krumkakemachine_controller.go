@@ -217,7 +217,7 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 		},
 	}
 
-	// TODO: Use instance.InternalIP when all migrations are complete.
+	// TODO: Use instance.InternalIP when all migrations are complete. For IPv6, only an external address should be set.
 	if instance.V6Network != "" {
 		externalIPv6Address := instance.V6Network + "1"
 		externalIPv6AddressSHA256 := sha256.Sum256([]byte(externalIPv6Address + "/128"))
@@ -227,6 +227,7 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 		}
 		v = (v >> 7) + 1
 		internalIPv4Address := fmt.Sprintf("192.168.%d.%d", 34+(v/256), v%256)
+		internalIPv6Address := fmt.Sprintf("fd00:cafe::192:168:%d:%d", 34+(v/256), v%256)
 
 		ctx.KrumkakeMachine.Status.Addresses = append(ctx.KrumkakeMachine.Status.Addresses,
 			clusterv1beta2.MachineAddress{
@@ -236,6 +237,10 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 			clusterv1beta2.MachineAddress{
 				Type:    clusterv1beta2.MachineInternalIP,
 				Address: internalIPv4Address,
+			},
+			clusterv1beta2.MachineAddress{
+				Type:    clusterv1beta2.MachineInternalIP,
+				Address: internalIPv6Address,
 			},
 		)
 	}
