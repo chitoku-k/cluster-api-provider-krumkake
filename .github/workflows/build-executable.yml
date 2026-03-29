@@ -39,6 +39,7 @@ jobs:
         with:
           fetch-depth: 0
           filter: tree:0
+          submodules: true
       - name: Set up Go
         uses: actions/setup-go@v6
         with:

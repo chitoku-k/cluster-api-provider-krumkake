@@ -2,6 +2,7 @@
 FROM golang:1.26.1 AS base
 WORKDIR /usr/src
 COPY go.mod go.sum /usr/src/
+COPY hack /usr/src/hack/
 RUN --mount=type=cache,target=/go \
     go mod download
 COPY . /usr/src/
