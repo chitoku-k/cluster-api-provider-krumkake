@@ -19,6 +19,7 @@ import (
 	"github.com/chitoku-k/cluster-api-provider-krumkake/context"
 	projectcalicov3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 	clientprojectcalicov3 "github.com/projectcalico/api/pkg/client/clientset_generated/clientset/typed/projectcalico/v3"
+	calicomodel "github.com/projectcalico/calico/libcalico-go/lib/backend/model"
 	"github.com/vultr/govultr/v3"
 	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -340,22 +341,26 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 			Address: address.Address,
 		})
 	}
-	ctx.Node, _, err = nodeutil.PatchNodeStatus(ctx.WorkloadClusterCoreV1Client, types.NodeName(node.Name), node, ctx.Node)
-	if err != nil {
-		return ctrl.Result{}, err
+	if !slices.Equal(node.Status.Addresses, ctx.Node.Status.Addresses) {
+		ctx.Node, _, err = nodeutil.PatchNodeStatus(ctx.WorkloadClusterCoreV1Client, types.NodeName(node.Name), node, ctx.Node)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	ctx.Node.Spec.Taints = slices.DeleteFunc(node.Spec.Taints, func(taint corev1.Taint) bool {
 		return taint.MatchTaint(&corev1.Taint{Key: cloudproviderapi.TaintExternalCloudProvider, Effect: corev1.TaintEffectNoSchedule})
 	})
-	nodePatch := client.MergeFrom(node)
-	nodePatchData, err := nodePatch.Data(ctx.Node)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	ctx.Node, err = ctx.WorkloadClusterCoreV1Client.Nodes().Patch(ctx, node.Name, nodePatch.Type(), nodePatchData, metav1.PatchOptions{})
-	if err != nil {
-		return ctrl.Result{}, err
+	if !slices.Equal(node.Spec.Taints, ctx.Node.Spec.Taints) {
+		nodePatch := client.MergeFrom(node)
+		nodePatchData, err := nodePatch.Data(ctx.Node)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		ctx.Node, err = ctx.WorkloadClusterCoreV1Client.Nodes().Patch(ctx, node.Name, nodePatch.Type(), nodePatchData, metav1.PatchOptions{})
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	if err := errors.Join(
@@ -363,6 +368,43 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 		r.reconcileIPPool(ctx),
 	); err != nil {
 		return ctrl.Result{}, err
+	}
+
+	blockAffinityList, err := ctx.WorkloadClusterProjectcalicoV3Client.BlockAffinities().List(ctx, metav1.ListOptions{
+		LabelSelector: calicomodel.CalculateBlockAffinityLabelSelector(calicomodel.BlockAffinityListOptions{
+			Host:         node.Name,
+			AffinityType: calicomodel.IPAMAffinityTypeHost,
+		}).String(),
+	})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if len(blockAffinityList.Items) == 0 {
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
+	ctx.Node.Spec.PodCIDRs = make([]string, 0, len(blockAffinityList.Items))
+	for _, blockAffinity := range blockAffinityList.Items {
+		if blockAffinity.Spec.State != projectcalicov3.StateConfirmed {
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+		ctx.Node.Spec.PodCIDRs = append(ctx.Node.Spec.PodCIDRs, blockAffinity.Spec.CIDR)
+	}
+	slices.SortFunc(ctx.Node.Spec.PodCIDRs, func(a, b string) int {
+		prefixA, _ := netip.ParsePrefix(a)
+		prefixB, _ := netip.ParsePrefix(b)
+		return prefixA.Compare(prefixB)
+	})
+	if !slices.Equal(node.Spec.PodCIDRs, ctx.Node.Spec.PodCIDRs) {
+		nodePatch := client.MergeFrom(node)
+		nodePatchData, err := nodePatch.Data(ctx.Node)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		ctx.Node, err = ctx.WorkloadClusterCoreV1Client.Nodes().Patch(ctx, node.Name, nodePatch.Type(), nodePatchData, metav1.PatchOptions{})
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
