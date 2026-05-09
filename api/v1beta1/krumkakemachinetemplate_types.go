@@ -35,7 +35,3 @@ type KrumkakeMachineTemplateList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []KrumkakeMachineTemplate `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&KrumkakeMachineTemplate{}, &KrumkakeMachineTemplateList{})
-}
