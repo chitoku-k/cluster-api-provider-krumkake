@@ -25,7 +25,7 @@ type KrumkakeClusterStatus struct {
 
 	// Conditions defines current service state of the KrumkakeCluster.
 	// +optional
-	Conditions clusterv1beta2.Conditions `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // KrumkakeClusterInitializationStatus defines the initialization status of KrumkakeCluster.
@@ -50,11 +50,11 @@ type KrumkakeCluster struct {
 	Status KrumkakeClusterStatus `json:"status,omitempty"`
 }
 
-func (k *KrumkakeCluster) GetConditions() clusterv1beta2.Conditions {
+func (k *KrumkakeCluster) GetConditions() []metav1.Condition {
 	return k.Status.Conditions
 }
 
-func (k *KrumkakeCluster) SetConditions(conditions clusterv1beta2.Conditions) {
+func (k *KrumkakeCluster) SetConditions(conditions []metav1.Condition) {
 	k.Status.Conditions = conditions
 }
 
@@ -65,8 +65,4 @@ type KrumkakeClusterList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []KrumkakeCluster `json:"items"`
-}
-
-func init() {
-	SchemeBuilder.Register(&KrumkakeCluster{}, &KrumkakeClusterList{})
 }

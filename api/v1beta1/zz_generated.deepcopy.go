@@ -6,7 +6,7 @@ package v1beta1
 
 import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
-	runtime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
@@ -111,7 +111,7 @@ func (in *KrumkakeClusterStatus) DeepCopyInto(out *KrumkakeClusterStatus) {
 	in.Initialization.DeepCopyInto(&out.Initialization)
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make(v1beta2.Conditions, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -443,7 +443,7 @@ func (in *KrumkakeMachineStatus) DeepCopyInto(out *KrumkakeMachineStatus) {
 	in.Vultr.DeepCopyInto(&out.Vultr)
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make(v1beta2.Conditions, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}

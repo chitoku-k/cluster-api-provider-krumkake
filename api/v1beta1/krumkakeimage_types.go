@@ -78,7 +78,3 @@ type KrumkakeImageList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []KrumkakeImage `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&KrumkakeImage{}, &KrumkakeImageList{})
-}
