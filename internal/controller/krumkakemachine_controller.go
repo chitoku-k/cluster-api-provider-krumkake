@@ -676,6 +676,7 @@ func (r *KrumkakeMachineReconciler) hasLoadBalancerEndpointCapacity(ctx context.
 		for _, pool := range pools.Result {
 			currentOrigins += len(pool.Origins)
 		}
+		pools, err = pools.GetNextPage()
 	}
 	if err != nil {
 		return false, err
