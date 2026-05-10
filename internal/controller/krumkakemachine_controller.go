@@ -587,14 +587,12 @@ func (r *KrumkakeMachineReconciler) reconcileLoadBalancer(ctx context.MachineCon
 			Address:      cloudflare.F(origin.Address),
 			Enabled:      cloudflare.F(origin.Enabled),
 			FlattenCNAME: cloudflare.F(origin.FlattenCNAME),
+			Name:         cloudflare.F(origin.Name),
 			Port:         cloudflare.F(origin.Port),
 			Weight:       cloudflare.F(origin.Weight),
 		}
 		if len(origin.Header.Host) > 0 {
 			param.Header = cloudflare.F(cloudflareloadbalancers.HeaderParam{Host: cloudflare.F(origin.Header.Host)})
-		}
-		if len(origin.Name) > 0 {
-			param.Name = cloudflare.F(origin.Name)
 		}
 		if len(origin.VirtualNetworkID) > 0 {
 			param.VirtualNetworkID = cloudflare.F(origin.VirtualNetworkID)
@@ -625,6 +623,7 @@ func (r *KrumkakeMachineReconciler) reconcileLoadBalancer(ctx context.MachineCon
 
 		origins = append(origins, cloudflareloadbalancers.OriginParam{
 			Address: cloudflare.F(externalIP),
+			Name:    cloudflare.F(ctx.Machine.Name),
 		})
 	} else {
 		if !matchesOrigins {
