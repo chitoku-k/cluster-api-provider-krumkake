@@ -8,6 +8,8 @@ import (
 
 	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
 	"github.com/chitoku-k/cluster-api-provider-krumkake/internal/controller"
+	"github.com/cloudflare/cloudflare-go/v6"
+	cloudflareoption "github.com/cloudflare/cloudflare-go/v6/option"
 	"github.com/vultr/govultr/v3"
 	"golang.org/x/oauth2"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -114,6 +116,11 @@ func main() {
 	vultrTokenSource := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: vultrAccessToken})
 	vultrClient := govultr.NewClient(oauth2.NewClient(ctx, vultrTokenSource))
 
+	cloudflareAccountID := os.Getenv("CLOUDFLARE_ACCOUNT_ID")
+	cloudflarePoolID := os.Getenv("CLOUDFLARE_POOL_ID")
+	cloudflareAPIToken := os.Getenv("CLOUDFLARE_API_TOKEN")
+	cloudflareClient := cloudflare.NewClient(cloudflareoption.WithAPIToken(cloudflareAPIToken))
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
@@ -155,9 +162,13 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.KrumkakeMachineReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		InstanceService: vultrClient.Instance,
+		Client:                        mgr.GetClient(),
+		Scheme:                        mgr.GetScheme(),
+		InstanceService:               vultrClient.Instance,
+		CloudflareAccountID:           cloudflareAccountID,
+		CloudflarePoolID:              cloudflarePoolID,
+		CloudflareSubscriptionService: cloudflareClient.Accounts.Subscriptions,
+		CloudflarePoolService:         cloudflareClient.LoadBalancers.Pools,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "KrumkakeMachine")
 		os.Exit(1)

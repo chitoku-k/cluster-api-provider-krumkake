@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -17,6 +18,9 @@ import (
 
 	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
 	"github.com/chitoku-k/cluster-api-provider-krumkake/context"
+	"github.com/cloudflare/cloudflare-go/v6"
+	cloudflareaccounts "github.com/cloudflare/cloudflare-go/v6/accounts"
+	cloudflareloadbalancers "github.com/cloudflare/cloudflare-go/v6/load_balancers"
 	projectcalicov3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 	clientprojectcalicov3 "github.com/projectcalico/api/pkg/client/clientset_generated/clientset/typed/projectcalico/v3"
 	calicomodel "github.com/projectcalico/calico/libcalico-go/lib/backend/model"
@@ -49,8 +53,12 @@ import (
 
 type KrumkakeMachineReconciler struct {
 	client.Client
-	Scheme          *runtime.Scheme
-	InstanceService govultr.InstanceService
+	Scheme                        *runtime.Scheme
+	InstanceService               govultr.InstanceService
+	CloudflareAccountID           string
+	CloudflarePoolID              string
+	CloudflareSubscriptionService *cloudflareaccounts.SubscriptionService
+	CloudflarePoolService         *cloudflareloadbalancers.PoolService
 }
 
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=krumkakemachines,verbs=get;list;watch;create;update;patch;delete
@@ -361,6 +369,7 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 	if err := errors.Join(
 		r.reconcileCertificateSigningRequest(ctx),
 		r.reconcileIPPool(ctx),
+		r.reconcileLoadBalancer(ctx),
 	); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -543,7 +552,95 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 	return nil
 }
 
+func (r *KrumkakeMachineReconciler) reconcileLoadBalancer(ctx context.MachineContext) error {
+	if r.CloudflareAccountID == "" || r.CloudflarePoolID == "" {
+		return nil
+	}
+
+	if !clusterutil.IsControlPlaneMachine(ctx.Machine) {
+		return nil
+	}
+
+	var externalIP string
+	var addresses []string
+	for _, address := range ctx.Machine.Status.Addresses {
+		if address.Type == clusterv1beta2.MachineExternalIP && externalIP == "" {
+			externalIP = address.Address
+		}
+		switch address.Type {
+		case clusterv1beta2.MachineExternalIP, clusterv1beta2.MachineExternalDNS, clusterv1beta2.MachineHostName:
+			addresses = append(addresses, address.Address)
+		}
+	}
+	if externalIP == "" {
+		return nil
+	}
+
+	pool, err := r.CloudflarePoolService.Get(ctx, r.CloudflarePoolID, cloudflareloadbalancers.PoolGetParams{AccountID: cloudflare.F(r.CloudflareAccountID)})
+	if err != nil {
+		return err
+	}
+
+	var origins []cloudflareloadbalancers.OriginParam
+	for _, origin := range pool.Origins {
+		origins = append(origins, cloudflareloadbalancers.OriginParam{
+			Address:          cloudflare.F(origin.Address),
+			Enabled:          cloudflare.F(origin.Enabled),
+			FlattenCNAME:     cloudflare.F(origin.FlattenCNAME),
+			Header:           cloudflare.F(cloudflareloadbalancers.HeaderParam{Host: cloudflare.F(origin.Header.Host)}),
+			Name:             cloudflare.F(origin.Name),
+			Port:             cloudflare.F(origin.Port),
+			VirtualNetworkID: cloudflare.F(origin.VirtualNetworkID),
+			Weight:           cloudflare.F(origin.Weight),
+		})
+	}
+
+	var matchesOrigins bool
+	for _, origin := range pool.Origins {
+		if slices.Contains(addresses, origin.Address) {
+			matchesOrigins = true
+			break
+		}
+	}
+
+	if ctx.KrumkakeMachine.DeletionTimestamp.IsZero() {
+		if matchesOrigins {
+			return nil
+		}
+
+		ok, err := r.hasLoadBalancerEndpointCapacity(ctx)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+
+		origins = append(origins, cloudflareloadbalancers.OriginParam{
+			Address: cloudflare.F(externalIP),
+		})
+	} else {
+		if !matchesOrigins {
+			return nil
+		}
+
+		origins = slices.DeleteFunc(origins, func(origin cloudflareloadbalancers.OriginParam) bool {
+			return slices.Contains(addresses, origin.Address.Value)
+		})
+	}
+
+	if _, err := r.CloudflarePoolService.Edit(ctx, r.CloudflarePoolID, cloudflareloadbalancers.PoolEditParams{AccountID: cloudflare.F(r.CloudflareAccountID), Origins: cloudflare.F(origins)}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (r *KrumkakeMachineReconciler) reconcileDelete(ctx context.MachineContext) (ctrl.Result, error) {
+	if err := r.reconcileLoadBalancer(ctx); err != nil {
+		return ctrl.Result{}, nil
+	}
+
 	if instanceID, ok := strings.CutPrefix(ctx.KrumkakeMachine.Spec.ProviderID, "vultr://"); ok {
 		instance, res, err := r.InstanceService.Get(ctx, instanceID)
 		if err != nil {
@@ -562,6 +659,52 @@ func (r *KrumkakeMachineReconciler) reconcileDelete(ctx context.MachineContext) 
 
 	controllerutil.RemoveFinalizer(ctx.KrumkakeMachine, infrastructurev1beta1.MachineFinalizer)
 	return ctrl.Result{}, nil
+}
+
+func (r *KrumkakeMachineReconciler) hasLoadBalancerEndpointCapacity(ctx context.Context) (bool, error) {
+	var currentOrigins, maxOrigins int
+
+	type componentValue struct {
+		Name        string `json:"name"`
+		DisplayName string `json:"display_name"`
+		Value       int    `json:"value"`
+		Kind        string `json:"kind"`
+	}
+
+	pools, err := r.CloudflarePoolService.List(ctx, cloudflareloadbalancers.PoolListParams{AccountID: cloudflare.F(r.CloudflareAccountID)})
+	for pools != nil {
+		for _, pool := range pools.Result {
+			currentOrigins += len(pool.Origins)
+		}
+	}
+	if err != nil {
+		return false, err
+	}
+
+	subscriptions, err := r.CloudflareSubscriptionService.Get(ctx, cloudflareaccounts.SubscriptionGetParams{AccountID: cloudflare.F(r.CloudflareAccountID)})
+	for subscriptions != nil {
+		for _, subscription := range subscriptions.Result {
+			if !strings.HasPrefix(string(subscription.RatePlan.ID), "load_balancing_") {
+				continue
+			}
+
+			var componentValues []componentValue
+			if err := json.Unmarshal([]byte(subscription.JSON.ExtraFields["component_values"].Raw()), &componentValues); err != nil {
+				continue
+			}
+			for _, component := range componentValues {
+				if component.Name == "load_balancing_origins" {
+					maxOrigins += component.Value
+				}
+			}
+		}
+		subscriptions, err = subscriptions.GetNextPage()
+	}
+	if err != nil {
+		return false, err
+	}
+
+	return currentOrigins < maxOrigins, nil
 }
 
 func (r *KrumkakeMachineReconciler) KrumkakeClusterToKrumkakeMachines(ctx context.Context, obj client.Object) []ctrl.Request {
