@@ -20,6 +20,7 @@ type KrumkakeImageReconciler struct {
 	client.Client
 	Scheme          *runtime.Scheme
 	SnapshotService govultr.SnapshotService
+	HTTPClient      *http.Client
 }
 
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=krumkakeimages,verbs=get;list;watch;create;update;patch;delete
@@ -77,7 +78,12 @@ func (r *KrumkakeImageReconciler) reconcileNormal(ctx context.ImageContext) (ctr
 			return ctrl.Result{}, nil
 		}
 
-		snapshot, _, err := r.SnapshotService.CreateFromURL(ctx, &govultr.SnapshotURLReq{URL: ctx.KrumkakeImage.Spec.URL, UEFI: new(ctx.KrumkakeImage.Spec.UEFI)})
+		url, err := r.resolveImageURL(ctx, ctx.KrumkakeImage.Spec.URL)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		snapshot, _, err := r.SnapshotService.CreateFromURL(ctx, &govultr.SnapshotURLReq{URL: url, UEFI: new(ctx.KrumkakeImage.Spec.UEFI)})
 		if err != nil {
 			ctx.KrumkakeImage.Status.Vultr.SnapshotStatus = new(infrastructurev1beta1.SnapshotStatusError)
 			return ctrl.Result{}, err
@@ -132,6 +138,23 @@ func (r *KrumkakeImageReconciler) reconcileDelete(ctx context.ImageContext) (ctr
 
 	controllerutil.RemoveFinalizer(ctx.KrumkakeImage, infrastructurev1beta1.ImageFinalizer)
 	return ctrl.Result{}, nil
+}
+
+func (r *KrumkakeImageReconciler) resolveImageURL(ctx context.Context, url string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	res, err := r.HTTPClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = res.Body.Close()
+	}()
+
+	return res.Request.URL.String(), nil
 }
 
 func (r *KrumkakeImageReconciler) KrumkakeMachineToKrumkakeImages(ctx context.Context, obj client.Object) []ctrl.Request {
