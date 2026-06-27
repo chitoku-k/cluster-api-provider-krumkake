@@ -8,8 +8,8 @@ import (
 
 	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
 	"github.com/chitoku-k/cluster-api-provider-krumkake/internal/controller"
-	"github.com/cloudflare/cloudflare-go/v6"
-	cloudflareoption "github.com/cloudflare/cloudflare-go/v6/option"
+	"github.com/cloudflare/cloudflare-go/v7"
+	cloudflareoption "github.com/cloudflare/cloudflare-go/v7/option"
 	"github.com/vultr/govultr/v3"
 	"golang.org/x/oauth2"
 	"k8s.io/apimachinery/pkg/runtime"

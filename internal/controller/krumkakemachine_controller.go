@@ -18,9 +18,9 @@ import (
 
 	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
 	"github.com/chitoku-k/cluster-api-provider-krumkake/context"
-	"github.com/cloudflare/cloudflare-go/v6"
-	cloudflareaccounts "github.com/cloudflare/cloudflare-go/v6/accounts"
-	cloudflareloadbalancers "github.com/cloudflare/cloudflare-go/v6/load_balancers"
+	"github.com/cloudflare/cloudflare-go/v7"
+	cloudflareaccounts "github.com/cloudflare/cloudflare-go/v7/accounts"
+	cloudflareloadbalancers "github.com/cloudflare/cloudflare-go/v7/load_balancers"
 	projectcalicov3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 	clientprojectcalicov3 "github.com/projectcalico/api/pkg/client/clientset_generated/clientset/typed/projectcalico/v3"
 	calicomodel "github.com/projectcalico/calico/libcalico-go/lib/backend/model"
