@@ -1,4 +1,4 @@
 [submodule "hack/projectcalico/calico"]
 	path = hack/projectcalico/calico
 	url = https://github.com/projectcalico/calico
-	branch = v3.32.0
+	branch = v3.32.1
