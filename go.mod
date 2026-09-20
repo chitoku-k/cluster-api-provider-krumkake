@@ -135,7 +135,7 @@ require (
 	k8s.io/kube-openapi v0.31.0 // indirect
 	k8s.io/streaming v0.37.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.36.0 // indirect
-	sigs.k8s.io/controller-runtime/tools/setup-envtest v0.24.0 // indirect
+	sigs.k8s.io/controller-runtime/tools/setup-envtest v0.25.1 // indirect
 	sigs.k8s.io/controller-tools v0.22.0 // indirect
 	sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5 // indirect
 	sigs.k8s.io/kubebuilder/v4 v4.14.0 // indirect
