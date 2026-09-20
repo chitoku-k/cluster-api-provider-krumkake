@@ -21,6 +21,26 @@
         "jobs.*.strategy.matrix.include.platform[label].{\"depName\": $substringBefore(label, \"-\"), \"currentValue\": $substringAfter(label, \"-\")}"
       ],
       "datasourceTemplate": "github-runners"
+    },
+    {
+      "customType": "jsonata",
+      "fileFormat": "yaml",
+      "managerFilePatterns": [".github/workflows/*.yml"],
+      "matchStrings": [
+        "jobs.*.steps[$contains(uses, /^golangci\\/golangci-lint-action/)].{\"currentValue\": with.version}"
+      ],
+      "packageNameTemplate": "golangci/golangci-lint",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "jsonata",
+      "fileFormat": "yaml",
+      "managerFilePatterns": [".custom-gcl.yml"],
+      "matchStrings": [
+        "{\"currentValue\": version}"
+      ],
+      "packageNameTemplate": "golangci/golangci-lint",
+      "datasourceTemplate": "github-releases"
     }
   ],
   "packageRules": [
