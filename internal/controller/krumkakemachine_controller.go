@@ -30,6 +30,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -167,10 +168,32 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 			return ctrl.Result{}, fmt.Errorf("no value found in the secret")
 		}
 
-		krumkakeImageName := types.NamespacedName{Namespace: ctx.KrumkakeMachine.Namespace, Name: ctx.KrumkakeMachine.Spec.ImageName}
 		krumkakeImage := &infrastructurev1beta1.KrumkakeImage{}
-		if err := r.Get(ctx, krumkakeImageName, krumkakeImage); err != nil {
-			return ctrl.Result{}, err
+		switch {
+		case ctx.KrumkakeMachine.Spec.ImageName != "":
+			krumkakeImageName := types.NamespacedName{Namespace: ctx.KrumkakeMachine.Namespace, Name: ctx.KrumkakeMachine.Spec.ImageName}
+			if err := r.Get(ctx, krumkakeImageName, krumkakeImage); err != nil {
+				return ctrl.Result{}, err
+			}
+
+		case ctx.KrumkakeMachine.Spec.ImageSelector != nil:
+			krumkakeImageList := &infrastructurev1beta1.KrumkakeImageList{}
+
+			labelSelector, err := metav1.LabelSelectorAsSelector(ctx.KrumkakeMachine.Spec.ImageSelector)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			if err := r.List(ctx, krumkakeImageList, client.InNamespace(ctx.KrumkakeMachine.Namespace), client.MatchingLabelsSelector{Selector: labelSelector}); err != nil {
+				return ctrl.Result{}, err
+			}
+
+			if len(krumkakeImageList.Items) == 0 {
+				return ctrl.Result{}, fmt.Errorf("no matching image found")
+			}
+			krumkakeImageList.Items[0].DeepCopyInto(krumkakeImage)
+
+		default:
+			return ctrl.Result{}, fmt.Errorf("imageName or imageSelector must be specified")
 		}
 
 		if ptr.Deref(krumkakeImage.Status.Vultr.SnapshotStatus, infrastructurev1beta1.SnapshotStatusNone) != infrastructurev1beta1.SnapshotStatusComplete {
@@ -501,8 +524,7 @@ func (r *KrumkakeMachineReconciler) reconcileCertificateSigningRequest(ctx conte
 			LastUpdateTime: metav1.Now(),
 		})
 
-		_, err = ctx.WorkloadClusterCertificatesV1Client.CertificateSigningRequests().UpdateApproval(ctx, certificateSigningRequest.Name, &certificateSigningRequest, metav1.UpdateOptions{})
-		if err != nil {
+		if _, err := ctx.WorkloadClusterCertificatesV1Client.CertificateSigningRequests().UpdateApproval(ctx, certificateSigningRequest.Name, &certificateSigningRequest, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 	}
@@ -724,9 +746,9 @@ func (r *KrumkakeMachineReconciler) KrumkakeClusterToKrumkakeMachines(ctx contex
 		return nil
 	}
 
-	labels := map[string]string{clusterv1beta2.ClusterNameLabel: cluster.Name}
+	machineLabels := map[string]string{clusterv1beta2.ClusterNameLabel: cluster.Name}
 	machineList := &clusterv1beta2.MachineList{}
-	if err := r.List(ctx, machineList, client.InNamespace(cluster.Namespace), client.MatchingLabels(labels)); err != nil {
+	if err := r.List(ctx, machineList, client.InNamespace(cluster.Namespace), client.MatchingLabels(machineLabels)); err != nil {
 		log.Error(err, "failed to list machines")
 		return nil
 	}
@@ -758,9 +780,25 @@ func (r *KrumkakeMachineReconciler) KrumkakeImageToKrumkakeMachines(ctx context.
 	}
 
 	for _, krumkakeMachine := range krumkakeMachineList.Items {
-		if krumkakeMachine.Spec.ImageName != krumkakeImage.Name {
+		switch {
+		case krumkakeMachine.Spec.ImageName != "":
+			if krumkakeMachine.Spec.ImageName != krumkakeImage.Name {
+				continue
+			}
+
+		case krumkakeMachine.Spec.ImageSelector != nil:
+			labelSelector, err := metav1.LabelSelectorAsSelector(krumkakeMachine.Spec.ImageSelector)
+			if err != nil {
+				continue
+			}
+			if !labelSelector.Matches(labels.Set(krumkakeImage.Labels)) {
+				continue
+			}
+
+		default:
 			continue
 		}
+
 		name := client.ObjectKeyFromObject(&krumkakeMachine)
 		result = append(result, ctrl.Request{NamespacedName: name})
 	}

@@ -11,14 +11,19 @@ const (
 )
 
 // KrumkakeMachineSpec defines the desired state of KrumkakeMachine.
+// +kubebuilder:validation:AtLeastOneOf=imageSelector;imageName
 type KrumkakeMachineSpec struct {
 	// ProviderID is the unique identifier as specified by the cloud provider.
 	// +optional
 	ProviderID string `json:"providerID,omitempty"`
 
+	// ImageSelector is a selector which must be true for the KrumkakeImage to be used.
+	// +optional
+	ImageSelector *metav1.LabelSelector `json:"imageSelector,omitempty"`
+
 	// ImageName is the name of the KrumkakeImage.
-	// +kubebuilder:validation:Required
-	ImageName string `json:"imageName"`
+	// +optional
+	ImageName string `json:"imageName,omitempty"`
 
 	// Vultr is the spec of the Vultr machine.
 	// +optional
@@ -28,7 +33,7 @@ type KrumkakeMachineSpec struct {
 // KrumkakeMachineVultrSpec defines the desired Vultr's state of KrumkakeMachineVultrSpec.
 type KrumkakeMachineVultrSpec struct {
 	// The Vultr Region (DCID) the machine lives on.
-	// +kubebuilder:validation:Required
+	// +required
 	Region string `json:"region"`
 
 	// PlanID is the ID of the Vultr VPS plan.
