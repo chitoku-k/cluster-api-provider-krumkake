@@ -56,8 +56,10 @@ func (k *KrumkakeImageVultrStatus) GetSnapshotStatus() SnapshotStatus {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".spec.version"
 // +kubebuilder:printcolumn:name="Vultr Status",type="string",JSONPath=".status.vultr.snapshotStatus"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:selectablefield:JSONPath=".spec.version"
 // +kubebuilder:resource:path=krumkakeimages,scope=Namespaced,categories=cluster-api
 // +kubebuilder:subresource:status
 
