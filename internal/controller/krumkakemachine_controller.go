@@ -197,6 +197,7 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 				return ctrl.Result{}, fmt.Errorf("no matching image found")
 			}
 			krumkakeImageList.Items[0].DeepCopyInto(krumkakeImage)
+			ctx.KrumkakeMachine.Spec.ImageName = krumkakeImage.Name
 
 		default:
 			return ctrl.Result{}, fmt.Errorf("imageName or imageSelector must be specified")
