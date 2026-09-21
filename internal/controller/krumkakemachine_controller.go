@@ -183,7 +183,13 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 			if err != nil {
 				return ctrl.Result{}, err
 			}
-			if err := r.List(ctx, krumkakeImageList, client.InNamespace(ctx.KrumkakeMachine.Namespace), client.MatchingLabelsSelector{Selector: labelSelector}); err != nil {
+			if err := r.List(
+				ctx,
+				krumkakeImageList,
+				client.InNamespace(ctx.KrumkakeMachine.Namespace),
+				client.MatchingLabelsSelector{Selector: labelSelector},
+				client.MatchingFields(map[string]string{"spec.version": ctx.Machine.Spec.Version}),
+			); err != nil {
 				return ctrl.Result{}, err
 			}
 
@@ -780,6 +786,14 @@ func (r *KrumkakeMachineReconciler) KrumkakeImageToKrumkakeMachines(ctx context.
 	}
 
 	for _, krumkakeMachine := range krumkakeMachineList.Items {
+		machine, err := clusterutil.GetOwnerMachine(ctx, r.Client, krumkakeMachine.ObjectMeta)
+		if err != nil {
+			continue
+		}
+		if machine == nil || machine.Spec.Version != krumkakeImage.Spec.Version {
+			continue
+		}
+
 		switch {
 		case krumkakeMachine.Spec.ImageName != "":
 			if krumkakeMachine.Spec.ImageName != krumkakeImage.Name {
