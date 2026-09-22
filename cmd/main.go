@@ -136,6 +136,18 @@ func main() {
 	}
 	if err := mgr.GetFieldIndexer().IndexField(
 		ctx,
+		&infrastructurev1beta1.KrumkakeImage{},
+		"spec.version",
+		func(obj client.Object) []string {
+			krumkakeImage := obj.(*infrastructurev1beta1.KrumkakeImage)
+			return []string{krumkakeImage.Spec.Version}
+		},
+	); err != nil {
+		setupLog.Error(err, "Failed to index field", "kind", "KrumkakeImage", "field", "spec.version")
+		os.Exit(1)
+	}
+	if err := mgr.GetFieldIndexer().IndexField(
+		ctx,
 		&infrastructurev1beta1.KrumkakeMachine{},
 		"spec.imageName",
 		func(obj client.Object) []string {
