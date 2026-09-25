@@ -15,7 +15,7 @@ require (
 	github.com/cloudflare/cloudflare-go/v7 v7.11.0
 	github.com/go-logr/logr v1.4.4
 	github.com/onsi/ginkgo/v2 v2.33.0
-	github.com/onsi/gomega v1.43.1
+	github.com/onsi/gomega v1.44.0
 	github.com/projectcalico/api v0.0.0
 	github.com/projectcalico/calico v3.21.1+incompatible
 	github.com/vultr/govultr/v3 v3.33.0
