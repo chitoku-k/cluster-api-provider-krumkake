@@ -640,12 +640,8 @@ func (r *KrumkakeMachineReconciler) reconcileLoadBalancer(ctx context.MachineCon
 			return nil
 		}
 
-		ok, err := r.hasLoadBalancerEndpointCapacity(ctx)
-		if err != nil {
+		if ok, err := r.hasLoadBalancerEndpointCapacity(ctx); err != nil || !ok {
 			return err
-		}
-		if !ok {
-			return nil
 		}
 
 		origins = append(origins, cloudflareloadbalancers.OriginParam{
@@ -660,6 +656,40 @@ func (r *KrumkakeMachineReconciler) reconcileLoadBalancer(ctx context.MachineCon
 		origins = slices.DeleteFunc(origins, func(origin cloudflareloadbalancers.OriginParam) bool {
 			return slices.Contains(addresses, origin.Address.Value)
 		})
+
+		machineLabels := map[string]string{clusterv1beta2.ClusterNameLabel: ctx.Cluster.Name, clusterv1beta2.MachineControlPlaneLabel: ""}
+		machineList := &clusterv1beta2.MachineList{}
+		if err := r.List(ctx, machineList, client.InNamespace(ctx.Cluster.Namespace), client.MatchingLabels(machineLabels)); err != nil {
+			ctx.Logger.Error(err, "failed to list machines")
+		}
+		for _, machine := range machineList.Items {
+			if machine.Name == ctx.Machine.Name {
+				continue
+			}
+
+			var externalIP string
+			var addresses []string
+			for _, address := range machine.Status.Addresses {
+				if address.Type == clusterv1beta2.MachineExternalIP && externalIP == "" {
+					externalIP = address.Address
+				}
+				switch address.Type {
+				case clusterv1beta2.MachineExternalIP, clusterv1beta2.MachineExternalDNS, clusterv1beta2.MachineHostName:
+					addresses = append(addresses, address.Address)
+				}
+			}
+			if slices.ContainsFunc(origins, func(origin cloudflareloadbalancers.OriginParam) bool {
+				return slices.Contains(addresses, origin.Address.Value)
+			}) {
+				continue
+			}
+
+			origins = append(origins, cloudflareloadbalancers.OriginParam{
+				Address: cloudflare.F(externalIP),
+				Name:    cloudflare.F(ctx.Machine.Name),
+			})
+			break
+		}
 	}
 
 	if _, err := r.CloudflarePoolService.Edit(ctx, r.CloudflarePoolID, cloudflareloadbalancers.PoolEditParams{AccountID: cloudflare.F(r.CloudflareAccountID), Origins: cloudflare.F(origins)}); err != nil {
