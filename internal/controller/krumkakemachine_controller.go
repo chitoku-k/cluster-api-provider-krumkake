@@ -557,11 +557,9 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 
 	if _, err := ctx.WorkloadClusterProjectcalicoV3Client.IPPools().Get(ctx, ctx.Node.Name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
 		ipPool := &projectcalicov3.IPPool{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: ctx.Node.Name,
-				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(ctx.Node, corev1.SchemeGroupVersion.WithKind("Node")),
-				},
+			Name: ctx.Node.Name,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(ctx.Node, corev1.SchemeGroupVersion.WithKind("Node")),
 			},
 			Spec: projectcalicov3.IPPoolSpec{
 				CIDR:         cidr.String(),
