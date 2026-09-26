@@ -666,6 +666,9 @@ func (r *KrumkakeMachineReconciler) reconcileLoadBalancer(ctx context.MachineCon
 			if machine.Name == ctx.Machine.Name {
 				continue
 			}
+			if !machine.DeletionTimestamp.IsZero() {
+				continue
+			}
 
 			var externalIP string
 			var addresses []string
