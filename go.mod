@@ -1,12 +1,11 @@
 module github.com/chitoku-k/cluster-api-provider-krumkake
 
-go 1.27
-
-toolchain go1.27.1
+go 1.27.1
 
 replace (
 	github.com/projectcalico/api => ./hack/projectcalico/calico/api
 	github.com/projectcalico/calico => ./hack/projectcalico/calico
+	github.com/projectcalico/calico/lib/logrusr => ./hack/projectcalico/calico/lib/logrusr
 	github.com/projectcalico/calico/lib/std => ./hack/projectcalico/calico/lib/std
 	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098
 )
