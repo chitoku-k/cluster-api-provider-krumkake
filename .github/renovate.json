@@ -7,10 +7,6 @@
   "prConcurrentLimit": 0,
   "prHourlyLimit": 0,
   "rangeStrategy": "bump",
-  "cloneSubmodules": true,
-  "git-submodules": {
-    "enabled": true
-  },
   "customManagers": [
     {
       "customType": "jsonata",

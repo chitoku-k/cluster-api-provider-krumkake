@@ -1,23 +1,16 @@
 module github.com/chitoku-k/cluster-api-provider-krumkake
 
-go 1.27
+go 1.27.1
 
-toolchain go1.27.1
-
-replace (
-	github.com/projectcalico/api => ./hack/projectcalico/calico/api
-	github.com/projectcalico/calico => ./hack/projectcalico/calico
-	github.com/projectcalico/calico/lib/std => ./hack/projectcalico/calico/lib/std
-	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098
-)
+replace k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098
 
 require (
 	github.com/cloudflare/cloudflare-go/v7 v7.12.0
 	github.com/go-logr/logr v1.4.4
 	github.com/onsi/ginkgo/v2 v2.33.0
 	github.com/onsi/gomega v1.44.0
-	github.com/projectcalico/api v0.0.0
-	github.com/projectcalico/calico v3.21.1+incompatible
+	github.com/projectcalico/api v0.0.0-20260303210141-543421943355
+	github.com/projectcalico/calico v0.0.0-20261001232133-fbaa37111163
 	github.com/vultr/govultr/v3 v3.33.0
 	golang.org/x/oauth2 v0.37.0
 	k8s.io/api v0.37.1
@@ -83,6 +76,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+	github.com/projectcalico/calico/lib/logrusr v0.0.0-20261001232133-fbaa37111163 // indirect
 	github.com/projectcalico/calico/lib/std v0.0.0-20260919155223-114019f5945d // indirect
 	github.com/prometheus/client_golang v1.24.1 // indirect
 	github.com/prometheus/client_model v0.6.3 // indirect
