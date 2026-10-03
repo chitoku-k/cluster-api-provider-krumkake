@@ -1,10 +1,8 @@
 package controller
 
 import (
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
@@ -12,7 +10,6 @@ import (
 	"net/http"
 	"net/netip"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -250,40 +247,32 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 
 	ctx.KrumkakeMachine.Spec.ProviderID = fmt.Sprintf("vultr://%s", instance.ID)
 
-	ctx.KrumkakeMachine.Status.Addresses = []clusterv1beta2.MachineAddress{
-		{
-			Type:    clusterv1beta2.MachineExternalIP,
-			Address: instance.MainIP,
-		},
-	}
-
-	// TODO: Use instance.InternalIP when all migrations are complete.
-	if instance.V6Network != "" {
-		externalIPv6Address := instance.V6Network + "1"
-		externalIPv6AddressSHA256 := sha256.Sum256([]byte(externalIPv6Address + "/128"))
-		v, err := strconv.ParseUint(hex.EncodeToString(externalIPv6AddressSHA256[:])[:4], 16, 64)
-		if err != nil {
-			ctx.Logger.Error(err, "failed to parse sha256 of external IPv6 address")
-		}
-		v = (v >> 7) + 1
-		internalIPv4Address := fmt.Sprintf("192.168.%d.%d", 34+(v/256), v%256)
-
-		ctx.KrumkakeMachine.Status.Addresses = append(ctx.KrumkakeMachine.Status.Addresses,
-			clusterv1beta2.MachineAddress{
+	if len(ctx.KrumkakeMachine.Status.Addresses) == 0 {
+		ctx.KrumkakeMachine.Status.Addresses = []clusterv1beta2.MachineAddress{
+			{
 				Type:    clusterv1beta2.MachineExternalIP,
-				Address: externalIPv6Address,
+				Address: instance.MainIP,
 			},
-			clusterv1beta2.MachineAddress{
-				Type:    clusterv1beta2.MachineInternalIP,
-				Address: internalIPv4Address,
-			},
-		)
-	}
+		}
 
-	ctx.KrumkakeMachine.Status.Addresses = append(ctx.KrumkakeMachine.Status.Addresses, clusterv1beta2.MachineAddress{
-		Type:    clusterv1beta2.MachineHostName,
-		Address: instance.Hostname,
-	})
+		if instance.V6Network != "" {
+			ctx.KrumkakeMachine.Status.Addresses = append(ctx.KrumkakeMachine.Status.Addresses, clusterv1beta2.MachineAddress{
+				Type:    clusterv1beta2.MachineExternalIP,
+				Address: instance.V6Network + "1",
+			})
+		}
+
+		ctx.KrumkakeMachine.Status.Addresses = append(ctx.KrumkakeMachine.Status.Addresses, []clusterv1beta2.MachineAddress{
+			{
+				Type:    clusterv1beta2.MachineInternalIP,
+				Address: instance.InternalIP,
+			},
+			{
+				Type:    clusterv1beta2.MachineHostName,
+				Address: instance.Hostname,
+			},
+		}...)
+	}
 
 	ctx.KrumkakeMachine.Status.CPU = instance.VCPUCount
 	ctx.KrumkakeMachine.Status.RAM = instance.RAM
