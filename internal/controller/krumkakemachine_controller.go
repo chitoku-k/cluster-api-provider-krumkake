@@ -247,7 +247,9 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 
 	ctx.KrumkakeMachine.Spec.ProviderID = fmt.Sprintf("vultr://%s", instance.ID)
 
-	if len(ctx.KrumkakeMachine.Status.Addresses) == 0 {
+	if ctx.Machine.Status.GetTypedPhase() != clusterv1beta2.MachinePhaseRunning {
+		ctx.Logger.Info("addresses", "machine", ctx.Machine.Name, "status", instance.Status, "server_status", instance.ServerStatus, "main_ip", instance.MainIP, "v6_network", instance.V6Network)
+
 		ctx.KrumkakeMachine.Status.Addresses = []clusterv1beta2.MachineAddress{
 			{
 				Type:    clusterv1beta2.MachineExternalIP,
