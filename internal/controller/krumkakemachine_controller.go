@@ -691,7 +691,7 @@ func (r *KrumkakeMachineReconciler) reconcileLoadBalancer(ctx context.MachineCon
 
 func (r *KrumkakeMachineReconciler) reconcileDelete(ctx context.MachineContext) (ctrl.Result, error) {
 	if err := r.reconcileLoadBalancer(ctx); err != nil {
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, err
 	}
 
 	if instanceID, ok := strings.CutPrefix(ctx.KrumkakeMachine.Spec.ProviderID, "vultr://"); ok {
