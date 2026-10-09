@@ -213,6 +213,8 @@ github.com/vultr/govultr/v3 v3.33.0 h1:SD8y4tmoSXbpX137JT5k7jLxJ5j0WcnRtDbq/+P26
 github.com/vultr/govultr/v3 v3.33.0/go.mod h1:2zyUw9yADQaGwKnwDesmIOlBNLrm7edsCfWHFJpWKf8=
 github.com/vultr/govultr/v3 v3.33.1 h1:LN/WO0im0urbBQDrh7/jJ7gwSVtXQuZz7QLSJDJ/4E4=
 github.com/vultr/govultr/v3 v3.33.1/go.mod h1:2zyUw9yADQaGwKnwDesmIOlBNLrm7edsCfWHFJpWKf8=
+github.com/vultr/govultr/v3 v3.33.2 h1:cgQk4rDLwKMk3FwXL73Rf/aZDnps8N29VPo000E1eBQ=
+github.com/vultr/govultr/v3 v3.33.2/go.mod h1:2zyUw9yADQaGwKnwDesmIOlBNLrm7edsCfWHFJpWKf8=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
 github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
