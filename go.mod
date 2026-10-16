@@ -7,7 +7,7 @@ replace k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20260821135717-be32def
 require (
 	github.com/cloudflare/cloudflare-go/v7 v7.12.0
 	github.com/go-logr/logr v1.4.4
-	github.com/onsi/ginkgo/v2 v2.33.0
+	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 	github.com/projectcalico/api v0.0.0-20260303210141-543421943355
 	github.com/projectcalico/calico v0.0.0-20261001232133-fbaa37111163
