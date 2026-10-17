@@ -386,6 +386,7 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 	if err := errors.Join(
 		r.reconcileCertificateSigningRequest(ctx),
 		r.reconcileIPPool(ctx),
+		r.reconcileFelixConfiguration(ctx),
 		r.reconcileLoadBalancer(ctx),
 	); err != nil {
 		return ctrl.Result{}, err
@@ -557,6 +558,38 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 			},
 		}
 		if _, err := ctx.WorkloadClusterProjectcalicoV3Client.IPPools().Create(ctx, ipPool, metav1.CreateOptions{}); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *KrumkakeMachineReconciler) reconcileFelixConfiguration(ctx context.MachineContext) error {
+	var routeSourceAddress string
+	for _, address := range ctx.Node.Status.Addresses {
+		if address.Type != corev1.NodeInternalIP {
+			continue
+		}
+		addr, _ := netip.ParseAddr(address.Address)
+		if !addr.Is4() {
+			continue
+		}
+		routeSourceAddress = addr.String()
+	}
+	if routeSourceAddress == "" {
+		return nil
+	}
+
+	if _, err := ctx.WorkloadClusterProjectcalicoV3Client.FelixConfigurations().Get(ctx, "node."+ctx.Node.Name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
+		felixConfiguration := &projectcalicov3.FelixConfiguration{
+			Spec: projectcalicov3.FelixConfigurationSpec{
+				DeviceRouteSourceAddress: routeSourceAddress,
+			},
+		}
+		if _, err := ctx.WorkloadClusterProjectcalicoV3Client.FelixConfigurations().Create(ctx, felixConfiguration, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	} else if err != nil {
