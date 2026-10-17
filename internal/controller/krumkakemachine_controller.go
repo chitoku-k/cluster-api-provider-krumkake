@@ -585,6 +585,7 @@ func (r *KrumkakeMachineReconciler) reconcileFelixConfiguration(ctx context.Mach
 
 	if _, err := ctx.WorkloadClusterProjectcalicoV3Client.FelixConfigurations().Get(ctx, "node."+ctx.Node.Name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
 		felixConfiguration := &projectcalicov3.FelixConfiguration{
+			Name: "node." + ctx.Node.Name,
 			Spec: projectcalicov3.FelixConfigurationSpec{
 				DeviceRouteSourceAddress: routeSourceAddress,
 			},
