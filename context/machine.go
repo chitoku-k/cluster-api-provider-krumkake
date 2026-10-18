@@ -6,25 +6,29 @@ import (
 
 	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
 	"github.com/go-logr/logr"
-	clientprojectcalicov3 "github.com/projectcalico/api/pkg/client/clientset_generated/clientset/typed/projectcalico/v3"
+	clientsetprojectcalico "github.com/projectcalico/api/pkg/client/clientset_generated/clientset"
 	corev1 "k8s.io/api/core/v1"
-	clientcertificatesv1 "k8s.io/client-go/kubernetes/typed/certificates/v1"
-	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/kubernetes"
 	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/patch"
 )
 
+type ProjectcalicoInterface = clientsetprojectcalico.Interface
+
 type MachineContext struct {
 	context.Context
-	Cluster                              *clusterv1beta2.Cluster
-	KrumkakeCluster                      *infrastructurev1beta1.KrumkakeCluster
-	Machine                              *clusterv1beta2.Machine
-	KrumkakeMachine                      *infrastructurev1beta1.KrumkakeMachine
-	Node                                 *corev1.Node
-	WorkloadClusterCoreV1Client          clientcorev1.CoreV1Interface
-	WorkloadClusterCertificatesV1Client  clientcertificatesv1.CertificatesV1Interface
-	WorkloadClusterProjectcalicoV3Client clientprojectcalicov3.ProjectcalicoV3Interface
-	Logger                               logr.Logger
+	Cluster               *clusterv1beta2.Cluster
+	KrumkakeCluster       *infrastructurev1beta1.KrumkakeCluster
+	Machine               *clusterv1beta2.Machine
+	KrumkakeMachine       *infrastructurev1beta1.KrumkakeMachine
+	Node                  *corev1.Node
+	WorkloadClusterClient WorkloadClusterClient
+	Logger                logr.Logger
+}
+
+type WorkloadClusterClient struct {
+	kubernetes.Interface
+	ProjectcalicoInterface
 }
 
 func (m *MachineContext) Patch(patchHelper *patch.Helper) error {
