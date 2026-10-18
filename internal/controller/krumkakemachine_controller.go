@@ -546,9 +546,6 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 	if _, err := ctx.WorkloadClusterProjectcalicoV3Client.IPPools().Get(ctx, ctx.Node.Name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
 		ipPool := &projectcalicov3.IPPool{
 			Name: ctx.Node.Name,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(ctx.Node, corev1.SchemeGroupVersion.WithKind("Node")),
-			},
 			Spec: projectcalicov3.IPPoolSpec{
 				CIDR:         cidr.String(),
 				VXLANMode:    projectcalicov3.VXLANModeNever,
@@ -556,6 +553,9 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 				NATOutgoing:  false,
 				NodeSelector: fmt.Sprintf("%s == %q", corev1.LabelHostname, ctx.Node.Labels[corev1.LabelHostname]),
 			},
+		}
+		if err := controllerutil.SetOwnerReference(ctx.Node, ipPool, r.Scheme); err != nil {
+			return err
 		}
 		if _, err := ctx.WorkloadClusterProjectcalicoV3Client.IPPools().Create(ctx, ipPool, metav1.CreateOptions{}); err != nil {
 			return err
@@ -589,6 +589,9 @@ func (r *KrumkakeMachineReconciler) reconcileFelixConfiguration(ctx context.Mach
 			Spec: projectcalicov3.FelixConfigurationSpec{
 				DeviceRouteSourceAddress: routeSourceAddress,
 			},
+		}
+		if err := controllerutil.SetOwnerReference(ctx.Node, felixConfiguration, r.Scheme); err != nil {
+			return err
 		}
 		if _, err := ctx.WorkloadClusterProjectcalicoV3Client.FelixConfigurations().Create(ctx, felixConfiguration, metav1.CreateOptions{}); err != nil {
 			return err
