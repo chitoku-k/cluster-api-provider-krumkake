@@ -20,7 +20,7 @@ import (
 	cloudflareaccounts "github.com/cloudflare/cloudflare-go/v7/accounts"
 	cloudflareloadbalancers "github.com/cloudflare/cloudflare-go/v7/load_balancers"
 	projectcalicov3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
-	clientprojectcalicov3 "github.com/projectcalico/api/pkg/client/clientset_generated/clientset/typed/projectcalico/v3"
+	clientsetprojectcalico "github.com/projectcalico/api/pkg/client/clientset_generated/clientset"
 	calicomodel "github.com/projectcalico/calico/libcalico-go/lib/backend/model"
 	"github.com/vultr/govultr/v3"
 	certificatesv1 "k8s.io/api/certificates/v1"
@@ -32,8 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
-	clientcertificatesv1 "k8s.io/client-go/kubernetes/typed/certificates/v1"
-	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	cloudproviderapi "k8s.io/cloud-provider/api"
 	nodeutil "k8s.io/component-helpers/node/util"
@@ -333,22 +332,17 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 		return ctrl.Result{}, err
 	}
 
-	ctx.WorkloadClusterCoreV1Client, err = clientcorev1.NewForConfig(restConfig)
+	ctx.WorkloadClusterClient.Interface, err = kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	ctx.WorkloadClusterCertificatesV1Client, err = clientcertificatesv1.NewForConfig(restConfig)
+	ctx.WorkloadClusterClient.ProjectcalicoInterface, err = clientsetprojectcalico.NewForConfig(restConfig)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	ctx.WorkloadClusterProjectcalicoV3Client, err = clientprojectcalicov3.NewForConfig(restConfig)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	node, err := ctx.WorkloadClusterCoreV1Client.Nodes().Get(ctx, ctx.Machine.Status.NodeRef.Name, metav1.GetOptions{})
+	node, err := ctx.WorkloadClusterClient.CoreV1().Nodes().Get(ctx, ctx.Machine.Status.NodeRef.Name, metav1.GetOptions{})
 	if err != nil {
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
@@ -362,7 +356,7 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 		})
 	}
 	if !slices.Equal(node.Status.Addresses, ctx.Node.Status.Addresses) {
-		ctx.Node, _, err = nodeutil.PatchNodeStatus(ctx.WorkloadClusterCoreV1Client, types.NodeName(node.Name), node, ctx.Node)
+		ctx.Node, _, err = nodeutil.PatchNodeStatus(ctx.WorkloadClusterClient.CoreV1(), types.NodeName(node.Name), node, ctx.Node)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -377,7 +371,7 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		ctx.Node, err = ctx.WorkloadClusterCoreV1Client.Nodes().Patch(ctx, node.Name, nodePatch.Type(), nodePatchData, metav1.PatchOptions{})
+		ctx.Node, err = ctx.WorkloadClusterClient.CoreV1().Nodes().Patch(ctx, node.Name, nodePatch.Type(), nodePatchData, metav1.PatchOptions{})
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -392,7 +386,7 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 		return ctrl.Result{}, err
 	}
 
-	blockAffinityList, err := ctx.WorkloadClusterProjectcalicoV3Client.BlockAffinities().List(ctx, metav1.ListOptions{
+	blockAffinityList, err := ctx.WorkloadClusterClient.ProjectcalicoV3().BlockAffinities().List(ctx, metav1.ListOptions{
 		LabelSelector: calicomodel.CalculateBlockAffinityLabelSelector(calicomodel.BlockAffinityListOptions{
 			Host:         node.Name,
 			AffinityType: calicomodel.IPAMAffinityTypeHost,
@@ -423,7 +417,7 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		ctx.Node, err = ctx.WorkloadClusterCoreV1Client.Nodes().Patch(ctx, node.Name, nodePatch.Type(), nodePatchData, metav1.PatchOptions{})
+		ctx.Node, err = ctx.WorkloadClusterClient.CoreV1().Nodes().Patch(ctx, node.Name, nodePatch.Type(), nodePatchData, metav1.PatchOptions{})
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -434,7 +428,7 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 
 func (r *KrumkakeMachineReconciler) reconcileCertificateSigningRequest(ctx context.MachineContext) error {
 	certificateSigningRequestListOptions := metav1.ListOptions{FieldSelector: fields.OneTermEqualSelector("spec.signerName", certificatesv1.KubeletServingSignerName).String()}
-	certificateSigningRequestList, err := ctx.WorkloadClusterCertificatesV1Client.CertificateSigningRequests().List(ctx, certificateSigningRequestListOptions)
+	certificateSigningRequestList, err := ctx.WorkloadClusterClient.CertificatesV1().CertificateSigningRequests().List(ctx, certificateSigningRequestListOptions)
 	if err != nil {
 		return err
 	}
@@ -519,7 +513,7 @@ func (r *KrumkakeMachineReconciler) reconcileCertificateSigningRequest(ctx conte
 			LastUpdateTime: metav1.Now(),
 		})
 
-		if _, err := ctx.WorkloadClusterCertificatesV1Client.CertificateSigningRequests().UpdateApproval(ctx, certificateSigningRequest.Name, &certificateSigningRequest, metav1.UpdateOptions{}); err != nil {
+		if _, err := ctx.WorkloadClusterClient.CertificatesV1().CertificateSigningRequests().UpdateApproval(ctx, certificateSigningRequest.Name, &certificateSigningRequest, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 	}
@@ -543,7 +537,7 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 		return nil
 	}
 
-	if _, err := ctx.WorkloadClusterProjectcalicoV3Client.IPPools().Get(ctx, ctx.Node.Name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
+	if _, err := ctx.WorkloadClusterClient.ProjectcalicoV3().IPPools().Get(ctx, ctx.Node.Name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
 		ipPool := &projectcalicov3.IPPool{
 			Name: ctx.Node.Name,
 			Spec: projectcalicov3.IPPoolSpec{
@@ -557,7 +551,7 @@ func (r *KrumkakeMachineReconciler) reconcileIPPool(ctx context.MachineContext) 
 		if err := controllerutil.SetOwnerReference(ctx.Node, ipPool, r.Scheme); err != nil {
 			return err
 		}
-		if _, err := ctx.WorkloadClusterProjectcalicoV3Client.IPPools().Create(ctx, ipPool, metav1.CreateOptions{}); err != nil {
+		if _, err := ctx.WorkloadClusterClient.ProjectcalicoV3().IPPools().Create(ctx, ipPool, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	} else if err != nil {
@@ -583,7 +577,7 @@ func (r *KrumkakeMachineReconciler) reconcileFelixConfiguration(ctx context.Mach
 		return nil
 	}
 
-	if _, err := ctx.WorkloadClusterProjectcalicoV3Client.FelixConfigurations().Get(ctx, "node."+ctx.Node.Name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
+	if _, err := ctx.WorkloadClusterClient.ProjectcalicoV3().FelixConfigurations().Get(ctx, "node."+ctx.Node.Name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
 		felixConfiguration := &projectcalicov3.FelixConfiguration{
 			Name: "node." + ctx.Node.Name,
 			Spec: projectcalicov3.FelixConfigurationSpec{
@@ -593,7 +587,7 @@ func (r *KrumkakeMachineReconciler) reconcileFelixConfiguration(ctx context.Mach
 		if err := controllerutil.SetOwnerReference(ctx.Node, felixConfiguration, r.Scheme); err != nil {
 			return err
 		}
-		if _, err := ctx.WorkloadClusterProjectcalicoV3Client.FelixConfigurations().Create(ctx, felixConfiguration, metav1.CreateOptions{}); err != nil {
+		if _, err := ctx.WorkloadClusterClient.ProjectcalicoV3().FelixConfigurations().Create(ctx, felixConfiguration, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	} else if err != nil {
