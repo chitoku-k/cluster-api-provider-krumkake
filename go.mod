@@ -12,7 +12,7 @@ require (
 	github.com/projectcalico/api v0.0.0-20260303210141-543421943355
 	github.com/projectcalico/calico v0.0.0-20261001232133-fbaa37111163
 	github.com/vultr/govultr/v3 v3.34.0
-	golang.org/x/oauth2 v0.37.0
+	golang.org/x/oauth2 v0.38.0
 	k8s.io/api v0.37.2
 	k8s.io/apimachinery v0.37.2
 	k8s.io/client-go v0.37.2
