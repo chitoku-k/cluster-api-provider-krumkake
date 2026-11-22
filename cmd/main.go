@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
+	"text/template"
 
 	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
 	"github.com/chitoku-k/cluster-api-provider-krumkake/internal/controller"
@@ -45,6 +47,7 @@ func init() {
 
 func main() {
 	var printVersion bool
+	var fqdnTemplateString string
 	var metricsAddr string
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var webhookCertPath, webhookCertName, webhookCertKey string
@@ -53,6 +56,8 @@ func main() {
 	var secureMetrics bool
 	var tlsOpts []func(*tls.Config)
 	flag.BoolVar(&printVersion, "version", false, "Show version.")
+	flag.StringVar(&fqdnTemplateString, "fqdn-template", "",
+		"A templated string that's used to generate DNS names from nodes (optional).")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -117,6 +122,26 @@ func main() {
 	vultrTokenSource := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: vultrAccessToken})
 	vultrClient := govultr.NewClient(oauth2.NewClient(ctx, vultrTokenSource))
 
+	var fqdnTemplate *template.Template
+	if fqdnTemplateString != "" {
+		var err error
+		// https://github.com/kubernetes-sigs/external-dns/blob/v0.24.0/source/template/functions.go
+		fqdnTemplate, err = template.New("").Funcs(template.FuncMap{
+			"contains":   strings.Contains,
+			"trimPrefix": strings.TrimPrefix,
+			"trimSuffix": strings.TrimSuffix,
+			"trim":       strings.TrimSpace,
+			"toLower":    strings.ToLower,
+			"replace": func(oldValue, newValue, target string) string {
+				return strings.ReplaceAll(target, oldValue, newValue)
+			},
+		}).Parse(fqdnTemplateString)
+		if err != nil {
+			setupLog.Error(err, "Failed to parse FQDNTemplate")
+			os.Exit(1)
+		}
+	}
+
 	cloudflareAccountID := os.Getenv("CLOUDFLARE_ACCOUNT_ID")
 	cloudflarePoolID := os.Getenv("CLOUDFLARE_POOL_ID")
 	cloudflareAPIToken := os.Getenv("CLOUDFLARE_API_TOKEN")
@@ -179,6 +204,7 @@ func main() {
 		Client:                        mgr.GetClient(),
 		Scheme:                        mgr.GetScheme(),
 		InstanceService:               vultrClient.Instance,
+		FQDNTemplate:                  fqdnTemplate,
 		CloudflareAccountID:           cloudflareAccountID,
 		CloudflarePoolID:              cloudflarePoolID,
 		CloudflareSubscriptionService: cloudflareClient.Accounts.Subscriptions,
