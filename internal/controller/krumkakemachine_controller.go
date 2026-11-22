@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"text/template"
 	"time"
 
 	infrastructurev1beta1 "github.com/chitoku-k/cluster-api-provider-krumkake/api/v1beta1"
@@ -53,6 +54,7 @@ type KrumkakeMachineReconciler struct {
 	client.Client
 	Scheme                        *runtime.Scheme
 	InstanceService               govultr.InstanceService
+	FQDNTemplate                  *template.Template
 	CloudflareAccountID           string
 	CloudflarePoolID              string
 	CloudflareSubscriptionService *cloudflareaccounts.SubscriptionService
@@ -606,18 +608,8 @@ func (r *KrumkakeMachineReconciler) reconcileLoadBalancer(ctx context.MachineCon
 		return nil
 	}
 
-	var externalIP string
-	var addresses []string
-	for _, address := range ctx.Machine.Status.Addresses {
-		if address.Type == clusterv1beta2.MachineExternalIP && externalIP == "" {
-			externalIP = address.Address
-		}
-		switch address.Type {
-		case clusterv1beta2.MachineExternalIP, clusterv1beta2.MachineExternalDNS, clusterv1beta2.MachineHostName:
-			addresses = append(addresses, address.Address)
-		}
-	}
-	if externalIP == "" {
+	primaryAddress, addresses := r.extractMachineAddress(ctx, ctx.Machine)
+	if primaryAddress == "" {
 		return nil
 	}
 
@@ -663,7 +655,7 @@ func (r *KrumkakeMachineReconciler) reconcileLoadBalancer(ctx context.MachineCon
 		}
 
 		origins = append(origins, cloudflareloadbalancers.OriginParam{
-			Address: cloudflare.F(externalIP),
+			Address: cloudflare.F(primaryAddress),
 			Name:    cloudflare.F(ctx.Machine.Name),
 		})
 	} else {
@@ -688,17 +680,7 @@ func (r *KrumkakeMachineReconciler) reconcileLoadBalancer(ctx context.MachineCon
 				continue
 			}
 
-			var externalIP string
-			var addresses []string
-			for _, address := range machine.Status.Addresses {
-				if address.Type == clusterv1beta2.MachineExternalIP && externalIP == "" {
-					externalIP = address.Address
-				}
-				switch address.Type {
-				case clusterv1beta2.MachineExternalIP, clusterv1beta2.MachineExternalDNS, clusterv1beta2.MachineHostName:
-					addresses = append(addresses, address.Address)
-				}
-			}
+			primaryAddress, addresses := r.extractMachineAddress(ctx, &machine)
 			if slices.ContainsFunc(origins, func(origin cloudflareloadbalancers.OriginParam) bool {
 				return slices.Contains(addresses, origin.Address.Value)
 			}) {
@@ -706,7 +688,7 @@ func (r *KrumkakeMachineReconciler) reconcileLoadBalancer(ctx context.MachineCon
 			}
 
 			origins = append(origins, cloudflareloadbalancers.OriginParam{
-				Address: cloudflare.F(externalIP),
+				Address: cloudflare.F(primaryAddress),
 				Name:    cloudflare.F(ctx.Machine.Name),
 			})
 			break
@@ -790,6 +772,42 @@ func (r *KrumkakeMachineReconciler) hasLoadBalancerEndpointCapacity(ctx context.
 	}
 
 	return currentOrigins < maxOrigins, nil
+}
+
+func (r *KrumkakeMachineReconciler) extractMachineAddress(ctx context.MachineContext, machine *clusterv1beta2.Machine) (string, []string) {
+	var primaryAddress string
+	var allAddresses []string
+
+	for _, address := range machine.Status.Addresses {
+		if address.Type == clusterv1beta2.MachineExternalIP && primaryAddress == "" {
+			primaryAddress = address.Address
+		}
+		switch address.Type {
+		case clusterv1beta2.MachineExternalIP, clusterv1beta2.MachineExternalDNS, clusterv1beta2.MachineHostName:
+			allAddresses = append(allAddresses, address.Address)
+		}
+	}
+
+	if fqdn := r.executeFQDNTemplate(ctx); fqdn != "" {
+		primaryAddress = fqdn
+		allAddresses = append(allAddresses, fqdn)
+	}
+
+	return primaryAddress, allAddresses
+}
+
+func (r *KrumkakeMachineReconciler) executeFQDNTemplate(ctx context.MachineContext) string {
+	if r.FQDNTemplate == nil {
+		return ""
+	}
+
+	var sb strings.Builder
+	if err := r.FQDNTemplate.Execute(&sb, ctx.Node); err != nil {
+		ctx.Logger.Error(err, "failed to execute FQDN template")
+		return ""
+	}
+
+	return sb.String()
 }
 
 func (r *KrumkakeMachineReconciler) KrumkakeClusterToKrumkakeMachines(ctx context.Context, obj client.Object) []ctrl.Request {
