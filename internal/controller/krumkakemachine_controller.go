@@ -167,44 +167,15 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 			return ctrl.Result{}, fmt.Errorf("no value found in the secret")
 		}
 
-		krumkakeImage := &infrastructurev1beta1.KrumkakeImage{}
-		switch {
-		case ctx.KrumkakeMachine.Spec.ImageName != "":
-			krumkakeImageName := types.NamespacedName{Namespace: ctx.KrumkakeMachine.Namespace, Name: ctx.KrumkakeMachine.Spec.ImageName}
-			if err := r.Get(ctx, krumkakeImageName, krumkakeImage); err != nil {
-				return ctrl.Result{}, err
-			}
-
-		case ctx.KrumkakeMachine.Spec.ImageSelector != nil:
-			krumkakeImageList := &infrastructurev1beta1.KrumkakeImageList{}
-
-			labelSelector, err := metav1.LabelSelectorAsSelector(ctx.KrumkakeMachine.Spec.ImageSelector)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-			if err := r.List(
-				ctx,
-				krumkakeImageList,
-				client.InNamespace(ctx.KrumkakeMachine.Namespace),
-				client.MatchingLabelsSelector{Selector: labelSelector},
-				client.MatchingFields(map[string]string{"spec.version": ctx.Machine.Spec.Version}),
-			); err != nil {
-				return ctrl.Result{}, err
-			}
-
-			if len(krumkakeImageList.Items) == 0 {
-				return ctrl.Result{}, fmt.Errorf("no matching image found")
-			}
-			krumkakeImageList.Items[0].DeepCopyInto(krumkakeImage)
-			ctx.KrumkakeMachine.Spec.ImageName = krumkakeImage.Name
-
-		default:
-			return ctrl.Result{}, fmt.Errorf("imageName or imageSelector must be specified")
+		var krumkakeImage *infrastructurev1beta1.KrumkakeImage
+		krumkakeImage, err = r.getKrumkakeImage(ctx)
+		if err != nil {
+			return ctrl.Result{}, err
 		}
-
 		if ptr.Deref(krumkakeImage.Status.Vultr.SnapshotStatus, infrastructurev1beta1.SnapshotStatusNone) != infrastructurev1beta1.SnapshotStatusComplete {
 			return ctrl.Result{}, nil
 		}
+		ctx.KrumkakeMachine.Spec.ImageName = krumkakeImage.Name
 
 		var attachVPC []string
 		if vpcID := ctx.KrumkakeMachine.Spec.Vultr.VPCID; vpcID != "" {
@@ -725,6 +696,43 @@ func (r *KrumkakeMachineReconciler) reconcileDelete(ctx context.MachineContext) 
 
 	controllerutil.RemoveFinalizer(ctx.KrumkakeMachine, infrastructurev1beta1.MachineFinalizer)
 	return ctrl.Result{}, nil
+}
+
+func (r *KrumkakeMachineReconciler) getKrumkakeImage(ctx context.MachineContext) (*infrastructurev1beta1.KrumkakeImage, error) {
+	switch {
+	case ctx.KrumkakeMachine.Spec.ImageName != "":
+		krumkakeImage := &infrastructurev1beta1.KrumkakeImage{}
+		krumkakeImageName := types.NamespacedName{Namespace: ctx.KrumkakeMachine.Namespace, Name: ctx.KrumkakeMachine.Spec.ImageName}
+		if err := r.Get(ctx, krumkakeImageName, krumkakeImage); err != nil {
+			return nil, err
+		}
+		return krumkakeImage, nil
+
+	case ctx.KrumkakeMachine.Spec.ImageSelector != nil:
+		krumkakeImageList := &infrastructurev1beta1.KrumkakeImageList{}
+
+		labelSelector, err := metav1.LabelSelectorAsSelector(ctx.KrumkakeMachine.Spec.ImageSelector)
+		if err != nil {
+			return nil, err
+		}
+		if err := r.List(
+			ctx,
+			krumkakeImageList,
+			client.InNamespace(ctx.KrumkakeMachine.Namespace),
+			client.MatchingLabelsSelector{Selector: labelSelector},
+			client.MatchingFields(map[string]string{"spec.version": ctx.Machine.Spec.Version}),
+		); err != nil {
+			return nil, err
+		}
+
+		if len(krumkakeImageList.Items) == 0 {
+			return nil, fmt.Errorf("no matching image found")
+		}
+		return &krumkakeImageList.Items[0], nil
+
+	default:
+		return nil, fmt.Errorf("imageName or imageSelector must be specified")
+	}
 }
 
 func (r *KrumkakeMachineReconciler) hasLoadBalancerEndpointCapacity(ctx context.Context) (bool, error) {
