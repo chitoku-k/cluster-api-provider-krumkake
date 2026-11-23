@@ -802,7 +802,7 @@ func (r *KrumkakeMachineReconciler) executeFQDNTemplate(ctx context.MachineConte
 	}
 
 	var sb strings.Builder
-	if err := r.FQDNTemplate.Execute(&sb, ctx.Node); err != nil {
+	if err := r.FQDNTemplate.Execute(&sb, ctx.Machine); err != nil {
 		ctx.Logger.Error(err, "failed to execute FQDN template")
 		return ""
 	}
