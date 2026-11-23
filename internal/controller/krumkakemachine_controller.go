@@ -609,7 +609,7 @@ func (r *KrumkakeMachineReconciler) reconcileLoadBalancer(ctx context.MachineCon
 	}
 
 	primaryAddress, addresses := r.extractMachineAddress(ctx, ctx.Machine)
-	if primaryAddress == "" {
+	if len(addresses) == 0 {
 		return nil
 	}
 
@@ -646,7 +646,7 @@ func (r *KrumkakeMachineReconciler) reconcileLoadBalancer(ctx context.MachineCon
 	}
 
 	if ctx.KrumkakeMachine.DeletionTimestamp.IsZero() {
-		if matchesOrigins {
+		if matchesOrigins || primaryAddress == "" {
 			return nil
 		}
 
@@ -788,7 +788,7 @@ func (r *KrumkakeMachineReconciler) extractMachineAddress(ctx context.MachineCon
 		}
 	}
 
-	if fqdn := r.executeFQDNTemplate(ctx); fqdn != "" {
+	if fqdn := r.executeFQDNTemplate(ctx, machine); fqdn != "" {
 		primaryAddress = fqdn
 		allAddresses = append(allAddresses, fqdn)
 	}
@@ -796,13 +796,13 @@ func (r *KrumkakeMachineReconciler) extractMachineAddress(ctx context.MachineCon
 	return primaryAddress, allAddresses
 }
 
-func (r *KrumkakeMachineReconciler) executeFQDNTemplate(ctx context.MachineContext) string {
+func (r *KrumkakeMachineReconciler) executeFQDNTemplate(ctx context.MachineContext, machine *clusterv1beta2.Machine) string {
 	if r.FQDNTemplate == nil {
 		return ""
 	}
 
 	var sb strings.Builder
-	if err := r.FQDNTemplate.Execute(&sb, ctx.Machine); err != nil {
+	if err := r.FQDNTemplate.Execute(&sb, machine); err != nil {
 		ctx.Logger.Error(err, "failed to execute FQDN template")
 		return ""
 	}
