@@ -278,6 +278,9 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 	case "ok":
 		ctx.KrumkakeMachine.Status.Vultr.ServerStatus = new(infrastructurev1beta1.ServerStatusOK)
 		ctx.KrumkakeMachine.Status.Initialization.Provisioned = new(true)
+		if err := r.reconcileLoadBalancer(ctx); err != nil {
+			return ctrl.Result{}, err
+		}
 		return r.reconcileNode(ctx)
 	}
 
@@ -354,7 +357,6 @@ func (r *KrumkakeMachineReconciler) reconcileNode(ctx context.MachineContext) (c
 		r.reconcileCertificateSigningRequest(ctx),
 		r.reconcileIPPool(ctx),
 		r.reconcileFelixConfiguration(ctx),
-		r.reconcileLoadBalancer(ctx),
 	); err != nil {
 		return ctrl.Result{}, err
 	}
