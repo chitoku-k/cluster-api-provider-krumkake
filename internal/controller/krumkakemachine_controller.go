@@ -172,10 +172,11 @@ func (r *KrumkakeMachineReconciler) reconcileNormalVultr(ctx context.MachineCont
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		ctx.KrumkakeMachine.Spec.ImageName = krumkakeImage.Name
+
 		if ptr.Deref(krumkakeImage.Status.Vultr.SnapshotStatus, infrastructurev1beta1.SnapshotStatusNone) != infrastructurev1beta1.SnapshotStatusComplete {
 			return ctrl.Result{}, nil
 		}
-		ctx.KrumkakeMachine.Spec.ImageName = krumkakeImage.Name
 
 		var attachVPC []string
 		if vpcID := ctx.KrumkakeMachine.Spec.Vultr.VPCID; vpcID != "" {
